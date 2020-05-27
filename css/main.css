@@ -1,16 +1,18 @@
-@import url('https://fonts.googleapis.com/css?family=Open+Sans');
+@import url('https://fonts.googleapis.com/css?family=Roboto');
 
 body {
-	font-family: 'Open Sans';	
-}
-
-.body-text {
-	width: 500px;
+	font-family: 'Roboto';	
 }
 
 article {
 	display: grid;
-	grid-template-columns: 1fr minmax(0, 8.5in) 1fr;
+	grid-template-columns: 1fr 0.5in [start] 9in [end] 0.5in 1fr;
 	height: 100vh; /* temp */
+
+	padding: 0.5in 0;
 }
-article * { grid-column: 2 / 3;}
+article * { grid-column: start / end;}
+
+@media (max-width: 10in) {
+	article { grid-template-columns: 1fr 5% [start] 90% [end] 5% 1fr;}
+}

@@ -3,15 +3,23 @@
 	<head>
 		<title>Tyler Morrill</title>
 		<meta charset="UTF-8">
-		<link rel="stylesheet" type="text/css" href="css/main.css">
         <link rel="stylesheet" href="css/reset.css">
-        <link rel="stylesheet" href="css/debug.css">
+		<link rel="stylesheet" href="css/debug.css">
+		<link rel="stylesheet" href="css/main.css">
+		<script src="https://code.jquery.com/jquery-3.5.1.min.js"></script>
+		<script>
+			$(function(){
+				var includes = $('[article-include]');
+				jQuery.each(includes, function(){
+					var file = 'articles/' + $(this).data('include') + '.html';
+					$(this).load(file);
+				});
+			});
+		</script>
 	</head>
 	
 	<body>
-		<article>
-			<p class="debug-center">ARTICLE</p>
-		</article>
+		<div article-include="test"></div>
 		<article>
 			<p class="debug-center">ARTICLE</p>
 		</article>

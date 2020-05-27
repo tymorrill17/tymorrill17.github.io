@@ -11,7 +11,7 @@
 			$(function(){
 				var includes = $('[article-include]');
 				jQuery.each(includes, function(){
-					var file = 'articles/' + $(this).data() + '.html';
+					var file = 'articles/' + $(this).data(includes) + '.html';
 					$(this).load(file);
 				});
 			});

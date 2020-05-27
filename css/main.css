@@ -1,9 +1,5 @@
 @import url('https://fonts.googleapis.com/css?family=Open+Sans');
 
-h1 {
-	font-family: 'Open Sans';
-}
-
 body {
 	font-family: 'Open Sans';	
 }
@@ -11,3 +7,10 @@ body {
 .body-text {
 	width: 500px;
 }
+
+article {
+	display: grid;
+	grid-template-columns: 1fr minmax(0, 8.5in) 1fr;
+	height: 100vh; /* temp */
+}
+article * { grid-column: 2 / 3;}

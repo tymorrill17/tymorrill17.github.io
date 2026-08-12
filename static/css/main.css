@@ -53,6 +53,8 @@
   --nav-fg:        #6b6b5e;
   --nav-fg-hover:  #1a1a14;
   --footer-fg:     #8a8a7a;
+  /* Lifts the resume off the page like a sheet of paper. */
+  --paper-shadow:  0 2px 14px rgba(0, 0, 0, 0.14);
 }
 
 /* Dark counterpart: the cream inverted to a warm near-black, with the accent
@@ -68,6 +70,9 @@
     --nav-fg:        #9a9a8a;
     --nav-fg-hover:  #ffffff;
     --footer-fg:     #6e6e60;
+    /* A drop shadow is invisible against a dark ground, so the sheet gets a
+       faint halo instead — it softens the cut-out edge of the white page. */
+    --paper-shadow:  0 0 26px rgba(255, 255, 245, 0.07);
   }
 }
 
@@ -79,6 +84,7 @@
   --nav-fg:        #9a9a8a;
   --nav-fg-hover:  #ffffff;
   --footer-fg:     #6e6e60;
+  --paper-shadow:  0 0 26px rgba(255, 255, 245, 0.07);
 }
 
 body {
@@ -112,7 +118,7 @@ article,
    how Tufte CSS sets ET Book, and the face is drawn for it — its roman holds a
    large size without needing bold to carry authority. */
 h1, h2, h3, h4, h5, h6 {
-  color: var(--accent);
+  /* color: var(--accent); */
   font-weight: 400;
   line-height: 1.2; /* display sizes need tighter leading than body text */
   text-wrap: balance;
@@ -126,7 +132,7 @@ h1 {
 }
 
 h2 {
-  font-size: 1.6rem;
+  font-size: 1.8rem;
 }
 
 h3 {
@@ -245,6 +251,34 @@ main a {
 
 main a:hover {
   color: var(--accent-hover);
+}
+
+/* Resume. Wider than --measure, since a letter page shrunk to the prose column
+   would be too small to read; the PDF is not line-by-line text anyway. */
+.resume {
+  max-width: 900px;
+}
+
+/* Matches the PDF's 612x792pt MediaBox, so the frame is exactly page-shaped and
+   the viewer has no letterboxing of its own to add. The white background makes
+   the sheet appear at once instead of a hole in the page while the PDF loads. */
+.pdf-embed {
+  aspect-ratio: 612 / 792;
+  width: 100%;
+  background: #ffffff;
+  box-shadow: var(--paper-shadow);
+}
+
+.pdf-embed object {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.pdf-download {
+  margin-top: 1.25rem;
+  font-size: 0.95rem;
+  font-style: italic;
 }
 
 /* Page list (articles) */

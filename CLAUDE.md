@@ -106,6 +106,15 @@ verbatim rather than blanked. `grep -r "{{" _site/` after a build catches this.
 `<title>` tag and list entries; `show_title` controls only whether it also appears as an
 `<h1>` in the body, via the `{{page_heading}}` placeholder that every template carries.
 
+### The resume page
+
+`templates/resume.html` embeds `static/resume/TylerMorrillResume.pdf` in an `<object>`
+sized to the PDF's 612x792pt letter MediaBox via `aspect-ratio`, and always renders a
+download link beneath it. The link is not a fallback — several mobile browsers draw a
+blank box rather than triggering `<object>`'s fallback content, so it has to be
+unconditional. Replacing the resume means dropping in a new PDF at the same path; if its
+page size differs, update the `aspect-ratio` in `.pdf-embed`.
+
 ### List pages
 
 `template = "list"` auto-generates a `<ul class="page-list">` of other pages, sorted

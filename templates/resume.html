@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+{{head}}
+</head>
+<body>
+  {{header}}
+  <main>
+    {{page_heading}}
+    <div class="resume">
+      {{content}}
+      <div class="pdf-embed">
+        <!-- The #-parameters ask the built-in viewer to drop its toolbar, side
+             panel and scrollbar, and to fit the whole page in the frame. Chrome
+             and Edge honour them; Firefox's pdf.js and Safari ignore them, so the
+             frame has to look right with the chrome still present too. -->
+        <object
+          data="/resume/TylerMorrillResume.pdf#toolbar=0&amp;navpanes=0&amp;scrollbar=0&amp;view=Fit"
+          type="application/pdf"
+          aria-label="Resume, embedded PDF">
+          <!-- Shown only if the browser refuses to render the PDF inline, which
+               most mobile browsers do. The download link below is always present
+               because some of them render a blank box instead of falling back. -->
+          <p>This browser will not display the PDF inline.</p>
+        </object>
+      </div>
+      <p class="pdf-download">
+        <a href="/resume/TylerMorrillResume.pdf" download>Download as PDF</a>
+      </p>
+    </div>
+  </main>
+  {{footer}}
+</body>
+</html>

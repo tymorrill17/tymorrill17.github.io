@@ -1,0 +1,19 @@
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{title}}</title>
+  <link rel="stylesheet" href="/css/normalize.css">
+  <link rel="stylesheet" href="/css/main.css">
+  <script>
+    // Apply a saved theme choice before first paint, otherwise the page flashes
+    // the OS theme before the override lands.
+    (function () {
+      try {
+        var saved = localStorage.getItem("theme");
+        if (saved === "light" || saved === "dark")
+          document.documentElement.setAttribute("data-theme", saved);
+      } catch (error) {
+        // localStorage can throw when cookies are blocked; fall back to the OS theme.
+      }
+    })();
+  </script>
+  <script src="/js/theme.js" defer></script>

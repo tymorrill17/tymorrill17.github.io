@@ -1,0 +1,5 @@
+# Compiled generator
+ssg
+
+# Build output — regenerate with `make && ./ssg`
+_site/

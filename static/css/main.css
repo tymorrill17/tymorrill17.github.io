@@ -1,0 +1,169 @@
+/* Warm cream paper with a deep red accent. */
+:root {
+  --bg:            #fffff5;
+  --fg:            #1a1a14;
+  --accent:        #a00000;
+  --accent-hover:  #d02020;
+  --nav-fg:        #6b6b5e;
+  --nav-fg-hover:  #1a1a14;
+  --footer-fg:     #8a8a7a;
+}
+
+/* Dark counterpart: the cream inverted to a warm near-black, with the accent
+   lifted to stay legible against it. Declared twice — once for the OS
+   preference (unless the toggle has explicitly asked for light), once for the
+   toggle itself, so either can win. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg:            #14140d;
+    --fg:            #e8e8dc;
+    --accent:        #ff5c5c;
+    --accent-hover:  #ff8a8a;
+    --nav-fg:        #9a9a8a;
+    --nav-fg-hover:  #ffffff;
+    --footer-fg:     #6e6e60;
+  }
+}
+
+:root[data-theme="dark"] {
+  --bg:            #14140d;
+  --fg:            #e8e8dc;
+  --accent:        #ff5c5c;
+  --accent-hover:  #ff8a8a;
+  --nav-fg:        #9a9a8a;
+  --nav-fg-hover:  #ffffff;
+  --footer-fg:     #6e6e60;
+}
+
+body {
+  font-family: sans-serif;
+  font-size: 16px;
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 0 1rem;
+  background-color: var(--bg);
+  color: var(--fg);
+}
+
+h1, h2, h3, h4, h5, h6 {
+  color: var(--accent);
+}
+
+/* Header */
+header {
+  padding: 1.5rem 0 1rem;
+  margin-bottom: 2.5rem;
+}
+
+nav {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.5rem 1.25rem;
+}
+
+.nav-left, .nav-right {
+  display: flex;
+  align-items: baseline;
+  gap: 1.25rem;
+}
+
+nav a {
+  text-decoration: none;
+  color: var(--nav-fg);
+  font-size: 0.95rem;
+}
+
+nav a:hover {
+  color: var(--nav-fg-hover);
+  text-decoration: underline;
+}
+
+.nav-brand {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--accent);
+  margin-right: 0.5rem;
+}
+
+.nav-brand:hover {
+  color: var(--accent-hover);
+}
+
+/* Theme toggle. The glyph comes from CSS rather than JS so it is already
+   correct on first paint instead of being corrected after the script runs. */
+.theme-toggle {
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  cursor: pointer;
+  color: var(--nav-fg);
+  font-family: inherit;
+  font-size: 1.05rem;
+  line-height: 1;
+}
+
+.theme-toggle:hover {
+  color: var(--nav-fg-hover);
+}
+
+.theme-toggle::before {
+  content: "\2600"; /* sun, shown in light mode */
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .theme-toggle::before {
+    content: "\263E"; /* moon, shown in dark mode */
+  }
+}
+
+:root[data-theme="dark"] .theme-toggle::before {
+  content: "\263E";
+}
+
+/* Links in page content */
+main a {
+  color: var(--accent);
+}
+
+main a:hover {
+  color: var(--accent-hover);
+}
+
+/* Page list (articles) */
+.page-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.page-list li {
+  padding: 0 0 1.75rem;
+}
+
+.page-list a {
+  color: var(--fg);
+  text-decoration: none;
+  font-size: 1.15rem;
+  font-weight: 500;
+}
+
+.page-list a:hover {
+  color: var(--accent);
+}
+
+.page-date {
+  margin: 0.2rem 0 0;
+  font-size: 0.85rem;
+  color: var(--footer-fg);
+}
+
+/* Footer */
+footer {
+  margin-top: 3rem;
+  padding: 1rem 0;
+  color: var(--footer-fg);
+  font-size: 0.85rem;
+}

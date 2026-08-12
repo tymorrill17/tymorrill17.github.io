@@ -1,6 +1,52 @@
+/* ET Book — Edward Tufte's Bembo-derived book face, the same one Tufte CSS uses.
+   MIT licensed; see static/fonts/et-book/LICENSE. Self-hosted as .woff, which
+   every current browser supports, so no second format is needed.
+
+   Roman and bold use lining figures, the italic uses old-style figures — that is
+   how the upstream family is cut and how tufte.css pairs them. */
+
+@font-face {
+  font-family: "ET Book";
+  src: url("/fonts/et-book/et-book-roman-line-figures.woff") format("woff");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "ET Book";
+  src: url("/fonts/et-book/et-book-display-italic-old-style-figures.woff") format("woff");
+  font-weight: 400;
+  font-style: italic;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "ET Book";
+  src: url("/fonts/et-book/et-book-semi-bold-old-style-figures.woff") format("woff");
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "ET Book";
+  src: url("/fonts/et-book/et-book-bold-line-figures.woff") format("woff");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
 /* Warm cream paper with a deep red accent. */
 :root {
-  --bg:            #fffff5;
+  --font-body: "ET Book", Palatino, "Palatino Linotype", "Book Antiqua", Georgia, serif;
+
+  /* Width of the prose column. Everything that is read line-by-line is capped at
+     this so the measure stays constant no matter how wide the page gets; the
+     leftover width to its right is the sidenote gutter. */
+  --measure: 38em;
+
+  --bg:            #fffffc;
   --fg:            #1a1a14;
   --accent:        #a00000;
   --accent-hover:  #d02020;
@@ -36,17 +82,70 @@
 }
 
 body {
-  font-family: sans-serif;
-  font-size: 16px;
-  max-width: 800px;
+  font-family: var(--font-body);
+  /* ET Book is a book face with a small x-height — it sets smaller than a sans at
+     the same nominal size, so it wants ~18px rather than 16px to read comfortably.
+     rem stays anchored to the 16px root, so nav sizing is unaffected. */
+  font-size: 1.1875rem;
+  line-height: 1.6;
+  font-kerning: normal;
+  font-variant-ligatures: common-ligatures;
+  max-width: 1200px;
   margin: 0 auto;
-  padding: 0 1rem;
+  padding: 0 1.5rem;
   background-color: var(--bg);
   color: var(--fg);
 }
 
+/* Prose columns. The page is deliberately far wider than the text: line length
+   is fixed by --measure, and the ~500px left over on the right is the gutter
+   that sidenotes will float into (Tufte-style, negative margin-right off this
+   column). Widening the text itself instead would push past the ~75 characters
+   a line can hold before it gets hard to track. */
+article,
+.page-list {
+  max-width: var(--measure);
+}
+
+/* Headings in book-typography style: hierarchy comes from size and style rather
+   than weight, so they stay at the roman weight and h3 shifts to italic. This is
+   how Tufte CSS sets ET Book, and the face is drawn for it — its roman holds a
+   large size without needing bold to carry authority. */
 h1, h2, h3, h4, h5, h6 {
   color: var(--accent);
+  font-weight: 400;
+  line-height: 1.2; /* display sizes need tighter leading than body text */
+  text-wrap: balance;
+  /* Bonded to the text below, separated from the section above. */
+  margin: 2em 0 0.6em;
+}
+
+h1 {
+  font-size: 2.2rem;
+  margin-top: 0;
+}
+
+h2 {
+  font-size: 1.6rem;
+}
+
+h3 {
+  font-size: 1.3rem;
+  font-style: italic;
+}
+
+main p {
+  margin: 0 0 1.1em;
+  text-wrap: pretty; /* avoids a lone word on the last line */
+}
+
+main ul, main ol {
+  margin: 0 0 1.1em;
+  padding-left: 1.4em;
+}
+
+main li {
+  margin-bottom: 0.3em;
 }
 
 /* Header */
@@ -60,35 +159,48 @@ nav {
   justify-content: space-between;
   align-items: baseline;
   flex-wrap: wrap;
-  gap: 0.5rem 1.25rem;
+  gap: 0.5rem 1.75rem;
 }
 
 .nav-left, .nav-right {
   display: flex;
   align-items: baseline;
-  gap: 1.25rem;
+  gap: 1.75rem;
 }
 
 nav a {
   text-decoration: none;
-  color: var(--nav-fg);
-  font-size: 0.95rem;
+  color: var(--accent);
+  font-size: 1.25rem;
+  font-weight: 600;
 }
 
 nav a:hover {
-  color: var(--nav-fg-hover);
-  text-decoration: underline;
-}
-
-.nav-brand {
-  font-size: 1.25rem;
-  font-weight: 600;
-  color: var(--accent);
-  margin-right: 0.5rem;
-}
-
-.nav-brand:hover {
   color: var(--accent-hover);
+}
+
+/* Angle brackets on hover, and pinned open on the page you are viewing.
+   They are always laid out and only faded, so nothing shifts on hover. */
+nav a::before,
+nav a::after {
+  opacity: 0;
+}
+
+nav a::before {
+  content: "";
+  /* content: "\{ "; */
+}
+
+nav a::after {
+  content: "";
+  /* content: " \}"; */
+}
+
+nav a:hover::before,
+nav a:hover::after,
+nav a.is-current::before,
+nav a.is-current::after {
+  opacity: 1;
 }
 
 /* Theme toggle. The glyph comes from CSS rather than JS so it is already
@@ -99,14 +211,14 @@ nav a:hover {
   padding: 0;
   margin: 0;
   cursor: pointer;
-  color: var(--nav-fg);
+  color: var(--accent);
   font-family: inherit;
-  font-size: 1.05rem;
+  font-size: 1.25rem;
   line-height: 1;
 }
 
 .theme-toggle:hover {
-  color: var(--nav-fg-hover);
+  color: var(--accent-hover);
 }
 
 .theme-toggle::before {
@@ -123,9 +235,12 @@ nav a:hover {
   content: "\263E";
 }
 
-/* Links in page content */
+/* Links in page content. The default underline sits on the baseline and clips
+   serif descenders, so it is dropped a little and thinned. */
 main a {
   color: var(--accent);
+  text-underline-offset: 0.16em;
+  text-decoration-thickness: 0.06em;
 }
 
 main a:hover {
@@ -140,23 +255,37 @@ main a:hover {
 }
 
 .page-list li {
-  padding: 0 0 1.75rem;
+  padding: 0 0 2.25rem;
 }
 
 .page-list a {
   color: var(--fg);
   text-decoration: none;
-  font-size: 1.15rem;
-  font-weight: 500;
+  font-size: 1.75rem;
+  font-weight: 400; /* size carries these, matching the headings */
+  line-height: 1.2;
 }
 
 .page-list a:hover {
   color: var(--accent);
 }
 
+.page-description {
+  margin: 0.3rem 0 0;
+  text-wrap: pretty;
+}
+
+/* Both fields are optional and always render their element, so collapse the
+   empties rather than leaving them to contribute stray margin. */
+.page-description:empty,
+.page-date:empty {
+  display: none;
+}
+
 .page-date {
-  margin: 0.2rem 0 0;
-  font-size: 0.85rem;
+  margin: 0.15rem 0 0;
+  font-size: 0.9rem;
+  font-style: italic; /* the family has a real italic; no faux slant */
   color: var(--footer-fg);
 }
 

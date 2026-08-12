@@ -97,8 +97,14 @@ verbatim rather than blanked. `grep -r "{{" _site/` after a build catches this.
 | `title`         | filename stem | Page title, used in `<title>` and templates           |
 | `template`      | `default`     | Which `templates/<name>.html` to render into          |
 | `date`          | *(none)*      | `"Month D, YYYY"` — this exact format is what sorts   |
+| `description`   | *(none)*      | One-line summary shown under the title in list pages  |
+| `show_title`    | `false`       | Render the title as an `<h1>` at the top of the page  |
 | `list_dir`      | *(siblings)*  | List pages only: content subdirectory to enumerate    |
 | `item_template` | `list-item`   | List pages only: partial used per entry               |
+
+`title` and the on-page heading are deliberately separate. `title` always feeds the
+`<title>` tag and list entries; `show_title` controls only whether it also appears as an
+`<h1>` in the body, via the `{{page_heading}}` placeholder that every template carries.
 
 ### List pages
 
@@ -112,6 +118,12 @@ Date sorting parses the `"Month D, YYYY"` format into a sortable integer. Dates 
 don't parse sort to the bottom rather than failing the build, so a mistyped date shows up
 as a misplaced entry.
 
+`date` and `description` are optional, so the list renderer substitutes them explicitly
+after `substitute_frontmatter` — otherwise a page missing one would leak a literal
+`{{date}}` into the output. Their elements are always emitted and collapsed with `:empty`
+in CSS when blank. Any further optional key added to `list-item.html` needs the same
+treatment. Descriptions are plain text, not markdown.
+
 ## Styling
 
 `static/css/main.css` drives everything from CSS custom properties defined at the top.
@@ -124,10 +136,26 @@ For visual changes, edit the tokens rather than individual rules wherever the ch
 be expressed as a color. When adding a color, add it as a token and define it in all
 three places above; a color defined only inside the media query breaks the toggle.
 
+Nav links wear `<` and `>` via `::before`/`::after`, faded to `opacity: 0` and revealed on
+hover. They are always laid out and only faded, never inserted, so hovering does not shift
+the nav. The same brackets stay lit on the current page: the generator adds
+`class="is-current"` to whichever nav link's `href` equals the page being rendered
+(`mark_current_link` in `ssg.cpp`), which keeps the active state static rather than
+depending on JavaScript. Pages with no nav entry, such as articles, simply match nothing.
+
 The theme toggle's sun/moon glyph is CSS `content` on `.theme-toggle::before`, keyed off
 the same selectors as the palette, so it is correct on first paint. `static/js/theme.js`
 only flips the attribute and persists the choice; an inline script in the head partial
 applies the saved theme before paint to avoid a flash.
+
+Everything is set in ET Book, self-hosted from `static/fonts/et-book/` and declared as
+`@font-face` blocks at the top of `main.css`, with `--font-body` as the token. It is MIT
+licensed (`static/fonts/et-book/LICENSE`), and is the same face Tufte CSS uses. Four
+`.woff` faces are present: roman 400, italic 400, semi-bold 600, bold 700.
+
+Headings follow book-typography convention rather than web convention — hierarchy comes
+from size and style, so they stay at `font-weight: 400` and `h3` is italic. Do not
+"fix" this by bolding them.
 
 `static/css/normalize.css` is vendored (normalize.css v8.0.1) — do not modify.
 
@@ -135,5 +163,5 @@ applies the saved theme before paint to avoid a flash.
 
 - Semantic HTML5 (`<header>`, `<nav>`, `<main>`, `<footer>`, `<article>`)
 - Comments in `ssg.cpp` explain *why*, and section headers use the existing `// ---` banner style
-- Article templates already emit `<h1>{{title}}</h1>`, so start markdown bodies at `##`
+- Markdown bodies start at `##`; `#` is reserved for the opt-in `show_title` heading
 - Never hand-edit `_site/`; change the source and rebuild

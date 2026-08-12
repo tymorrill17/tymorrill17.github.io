@@ -85,6 +85,22 @@ static std::string markdown_to_html(const std::string& markdown) {
 }
 
 // ---------------------------------------------------------------------------
+// Tag the nav link pointing at the page being rendered, so the active entry can
+// be styled without any client-side script. Matching includes the closing quote
+// so that href="/" does not also match href="/about.html".
+// ---------------------------------------------------------------------------
+
+static std::string mark_current_link(const std::string& html, const std::string& url) {
+    const std::string href = "href=\"" + url + "\"";
+    const std::size_t position = html.find(href);
+    if (position == std::string::npos)
+        return html; // page has no nav entry, e.g. an article
+
+    const std::size_t insert_at = position + href.size();
+    return html.substr(0, insert_at) + " class=\"is-current\"" + html.substr(insert_at);
+}
+
+// ---------------------------------------------------------------------------
 // Turn a "Month D, YYYY" date into a sortable YYYYMMDD integer.
 // Empty or unrecognized dates return 0 so they sort to the bottom.
 // ---------------------------------------------------------------------------
@@ -120,9 +136,11 @@ struct Page {
     // Frontmatter properties
     std::string title;
     std::string date;
+    std::string description; // one-line summary, shown under the title in list pages
     std::string template_name;
     std::string item_template_name;
     std::string list_dir; // for list pages: content subdirectory to list, empty means siblings
+    bool show_title = false; // render the title as an <h1> at the top of the page
     std::string markdown;
     toml::table frontmatter;
 };
@@ -171,9 +189,11 @@ int main() {
         page.url           = url;
         page.title         = frontmatter["title"].value_or(entry.path().stem().string());
         page.date               = frontmatter["date"].value_or(std::string(""));
+        page.description        = frontmatter["description"].value_or(std::string(""));
         page.template_name      = frontmatter["template"].value_or(std::string("default"));
         page.item_template_name = frontmatter["item_template"].value_or(std::string("list-item"));
         page.list_dir           = frontmatter["list_dir"].value_or(std::string(""));
+        page.show_title         = frontmatter["show_title"].value_or(false);
         page.markdown      = std::move(markdown);
         page.frontmatter   = std::move(frontmatter);
         pages.push_back(std::move(page));
@@ -215,6 +235,11 @@ int main() {
                 std::string item = item_template;
                 substitute_frontmatter(item, other_page->frontmatter);
                 substitute(item, "url", other_page->url);
+                // date and description are optional, and substitute_frontmatter only
+                // fills keys that exist. Blank them explicitly so a page missing one
+                // does not leak a literal {{date}} / {{description}} into the page.
+                substitute(item, "date", other_page->date);
+                substitute(item, "description", other_page->description);
                 list_html += item;
             }
             list_html += "</ul>\n";
@@ -230,10 +255,15 @@ int main() {
         }
 
         const std::filesystem::path template_path = templates_dir / (page.template_name + ".html");
+        // Opt-in heading, so a page can carry a title for the tab and list entries
+        // without repeating it at the top of its own body.
+        const std::string page_heading = page.show_title ? "<h1>" + page.title + "</h1>" : "";
+
         std::string rendered_page = read_file(template_path);
+        substitute(rendered_page, "page_heading", page_heading);
         substitute(rendered_page, "head",    head); // before title: the head partial contains {{title}}
         substitute(rendered_page, "title",   page.title);
-        substitute(rendered_page, "header",  header);
+        substitute(rendered_page, "header",  mark_current_link(header, page.url));
         substitute(rendered_page, "footer",  footer);
         substitute(rendered_page, "content", content_html);
 

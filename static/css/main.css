@@ -253,6 +253,15 @@ main a:hover {
   color: var(--accent-hover);
 }
 
+/* Math. Display formulas are spans (a block element inside cmark's <p> would be
+   invalid HTML), so they are blocked out here instead. */
+.math-display {
+  display: block;
+  margin: 1.4em 0;
+  overflow-x: auto; /* a long formula scrolls rather than widening the page */
+  overflow-y: hidden;
+}
+
 /* Resume. Wider than --measure, since a letter page shrunk to the prose column
    would be too small to read; the PDF is not line-by-line text anyway. */
 .resume {

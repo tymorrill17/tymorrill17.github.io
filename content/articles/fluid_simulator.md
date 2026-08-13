@@ -9,6 +9,8 @@ description = "A multi-threaded 2D SPH fluid solver in C++, drawn in real time t
 
 A real-time interactive 2D fluid simulator written in C++ and rendered using a home-brew vulkan renderer. It uses the SPH technique and is multi-threaded.
 
-## Gifs/Images
+# Smoothed-Particle Hydrodynamics
+
+The main idea of SPH comes from $$\rho_i = \sum_j m_j W(\|x_i - x_j\|, h)$$
 
 PLACEHOLDER

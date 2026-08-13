@@ -56,13 +56,16 @@ static toml::table parse_frontmatter(std::string& content) {
 // Replaces every occurrence of {{key}} with value in place
 // ---------------------------------------------------------------------------
 
-static void substitute(std::string& text, const std::string& key, const std::string& value) {
-    const std::string to_replace = "{{" + key + "}}";
+static void replace_all(std::string& text, const std::string& target, const std::string& value) {
     std::size_t position = 0;
-    while ((position = text.find(to_replace, position)) != std::string::npos) {
-        text.replace(position, to_replace.size(), value);
+    while ((position = text.find(target, position)) != std::string::npos) {
+        text.replace(position, target.size(), value);
         position += value.size();
     }
+}
+
+static void substitute(std::string& text, const std::string& key, const std::string& value) {
+    replace_all(text, "{{" + key + "}}", value);
 }
 
 static void substitute_frontmatter(std::string& text, const toml::table& frontmatter) {
@@ -74,14 +77,130 @@ static void substitute_frontmatter(std::string& text, const toml::table& frontma
 
 // ---------------------------------------------------------------------------
 // Use cmark to convert markdown to html
+// CMARK_OPT_UNSAFE keeps raw HTML in the output. Since cmark 0.29 the default is
+// to strip it, which would silently drop any inline HTML written in an article.
+// This is our own content, so there is no untrusted input to defend against.
 // ---------------------------------------------------------------------------
 
 static std::string markdown_to_html(const std::string& markdown) {
     // allocates char*, must free later
-    char* raw_html = cmark_markdown_to_html(markdown.c_str(), markdown.size(), CMARK_OPT_DEFAULT);
+    char* raw_html = cmark_markdown_to_html(markdown.c_str(), markdown.size(), CMARK_OPT_UNSAFE);
     std::string result(raw_html);
     free(raw_html);
     return result;
+}
+
+// ---------------------------------------------------------------------------
+// Math protection
+//
+// CommonMark treats a backslash before ASCII punctuation as an escape, so \\,
+// \, \{ and \% do not survive markdown conversion, and * inside a formula turns
+// into emphasis. Math is therefore lifted out before cmark sees the text,
+// replaced by an inert alphanumeric placeholder, and spliced back afterwards for
+// KaTeX to render in the browser.
+// ---------------------------------------------------------------------------
+
+struct MathSpan {
+    std::string tex;
+    bool display = false; // $$...$$ rather than $...$
+};
+
+static std::string html_escape(const std::string& text) {
+    std::string escaped;
+    escaped.reserve(text.size());
+    for (const char character : text) {
+        switch (character) {
+        case '&': escaped += "&amp;"; break;
+        case '<': escaped += "&lt;";  break;
+        case '>': escaped += "&gt;";  break;
+        default:  escaped += character; break;
+        }
+    }
+    return escaped;
+}
+
+// Trailing "END" keeps one placeholder from being a prefix of another.
+static std::string math_placeholder(std::size_t index) {
+    return "KTXMATH" + std::to_string(index) + "END";
+}
+
+static std::string extract_math(const std::string& markdown, std::vector<MathSpan>& spans) {
+    std::string output;
+    output.reserve(markdown.size());
+
+    for (std::size_t index = 0; index < markdown.size();) {
+        // A backslash escapes whatever follows, so \$ is a literal dollar sign.
+        if (markdown[index] == '\\' && index + 1 < markdown.size()) {
+            output += markdown[index];
+            output += markdown[index + 1];
+            index += 2;
+            continue;
+        }
+
+        if (markdown[index] != '$') {
+            output += markdown[index];
+            ++index;
+            continue;
+        }
+
+        const bool display          = index + 1 < markdown.size() && markdown[index + 1] == '$';
+        const std::string delimiter = display ? "$$" : "$";
+        const std::size_t body_start = index + delimiter.size();
+        const std::size_t body_end   = markdown.find(delimiter, body_start);
+
+        bool is_math = body_end != std::string::npos && body_end > body_start;
+        // An unpaired $ in prose (a price, say) should stay literal, so inline
+        // math is not allowed to run across a paragraph break.
+        // find returns npos when absent, which is never < body_end.
+        if (is_math && !display && markdown.find("\n\n", body_start) < body_end)
+            is_math = false;
+
+        if (!is_math) {
+            output += markdown[index];
+            ++index;
+            continue;
+        }
+
+        MathSpan span;
+        span.tex     = markdown.substr(body_start, body_end - body_start);
+        span.display = display;
+        output += math_placeholder(spans.size());
+        spans.push_back(std::move(span));
+        index = body_end + delimiter.size();
+    }
+
+    return output;
+}
+
+static void restore_math(std::string& html, const std::vector<MathSpan>& spans) {
+    for (std::size_t index = 0; index < spans.size(); ++index) {
+        // A span even for display math: cmark wraps the placeholder in a <p>, and
+        // a block-level element inside <p> is invalid HTML. CSS blocks it instead.
+        const std::string element =
+            std::string("<span class=\"math ") + (spans[index].display ? "math-display" : "math-inline") +
+            "\">" + html_escape(spans[index].tex) + "</span>";
+        replace_all(html, math_placeholder(index), element);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Render one page body: frontmatter substitution, math protection, markdown.
+// Sets has_math so the page can pull in the KaTeX assets only when it needs them.
+// ---------------------------------------------------------------------------
+
+static std::string render_body(const std::string& raw_markdown, const toml::table& frontmatter,
+                               bool& has_math) {
+    std::string markdown = raw_markdown;
+    substitute_frontmatter(markdown, frontmatter);
+
+    std::vector<MathSpan> spans;
+    markdown = extract_math(markdown, spans);
+
+    std::string html = markdown_to_html(markdown);
+    restore_math(html, spans);
+
+    has_math = !spans.empty();
+    return html;
 }
 
 // ---------------------------------------------------------------------------
@@ -155,6 +274,12 @@ int main() {
     const std::filesystem::path static_dir    = "static";
     const std::filesystem::path templates_dir = "templates";
 
+    // Both scripts are deferred, which also guarantees katex.min.js runs first.
+    const std::string math_assets =
+        "<link rel=\"stylesheet\" href=\"/katex/katex.min.css\">\n"
+        "  <script src=\"/katex/katex.min.js\" defer></script>\n"
+        "  <script src=\"/js/math.js\" defer></script>";
+
     const std::string head   = read_file(templates_dir / "partials" / "head.html");
     const std::string header = read_file(templates_dir / "partials" / "header.html");
     const std::string footer = read_file(templates_dir / "partials" / "footer.html");
@@ -202,6 +327,7 @@ int main() {
     // --- Second pass: render pages ---
     for (const Page& page : pages) {
         std::string content_html;
+        bool page_has_math = false;
 
         if (page.template_name == "list") {
             // List the pages in list_dir, or this page's own directory when unset.
@@ -245,13 +371,9 @@ int main() {
             list_html += "</ul>\n";
 
             // Any markdown body on the list page itself renders above the list.
-            std::string markdown = page.markdown;
-            substitute_frontmatter(markdown, page.frontmatter);
-            content_html = markdown_to_html(markdown) + list_html;
+            content_html = render_body(page.markdown, page.frontmatter, page_has_math) + list_html;
         } else {
-            std::string markdown = page.markdown;
-            substitute_frontmatter(markdown, page.frontmatter);
-            content_html = markdown_to_html(markdown);
+            content_html = render_body(page.markdown, page.frontmatter, page_has_math);
         }
 
         const std::filesystem::path template_path = templates_dir / (page.template_name + ".html");
@@ -262,6 +384,9 @@ int main() {
         std::string rendered_page = read_file(template_path);
         substitute(rendered_page, "page_heading", page_heading);
         substitute(rendered_page, "head",    head); // before title: the head partial contains {{title}}
+        // KaTeX is ~300KB, so it is pulled in only by pages that actually have math.
+        // Substituted after head, which is where the placeholder lives.
+        substitute(rendered_page, "math_assets", page_has_math ? math_assets : "");
         substitute(rendered_page, "title",   page.title);
         substitute(rendered_page, "header",  mark_current_link(header, page.url));
         substitute(rendered_page, "footer",  footer);

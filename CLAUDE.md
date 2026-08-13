@@ -23,7 +23,8 @@ alternative would be genuinely large or error-prone.
 Current dependency budget, which should stay roughly this small:
 
 - A C++17 compiler and `make`
-- `libcmark` (markdown → HTML), linked with `-lcmark`
+- `libcmark` (markdown → HTML), linked with `-lcmark`, called with `CMARK_OPT_UNSAFE`
+  so raw HTML in markdown survives (cmark strips it by default since 0.29)
 - `toml.hpp` (frontmatter parsing), vendored in the repo root
 
 No package manager, no CSS preprocessor, no JS bundler, no CI. Client-side JavaScript is
@@ -80,15 +81,22 @@ before they can render.
 Substitution is literal `{{key}}` string replacement — there are no conditionals, loops,
 or expressions, by design.
 
-Templates receive `{{head}}`, `{{header}}`, `{{footer}}` (the partials), `{{title}}`, and
-`{{content}}`. Note that `{{head}}` is substituted *before* `{{title}}`, because the head
-partial itself contains `{{title}}`.
+Templates receive exactly six placeholders — `{{head}}`, `{{header}}`, `{{footer}}` (the
+partials), `{{title}}`, `{{content}}` and `{{page_heading}}` — plus `{{math_assets}}`,
+which only the head partial uses. Templates never see the frontmatter table, so an
+arbitrary key like `{{description}}` will *not* resolve in a page template; that works
+only in markdown bodies and in `list-item.html`.
+
+Substitution order matters in two places: `{{head}}` goes in before `{{title}}` because
+the head partial contains `{{title}}`, and `{{math_assets}}` goes in after `{{head}}`
+because that is where its placeholder lives.
 
 Within a page's own markdown body, any string-valued frontmatter key is available as
 `{{key}}`.
 
 A caveat worth knowing: a `{{key}}` with no matching frontmatter is left in the output
-verbatim rather than blanked. `grep -r "{{" _site/` after a build catches this.
+verbatim rather than blanked. `grep -rn "{{" --include="*.html" _site/` after a build
+catches this — scope it to HTML, since minified `katex.min.js` contains `{{`.
 
 ### Frontmatter keys
 
@@ -105,6 +113,25 @@ verbatim rather than blanked. `grep -r "{{" _site/` after a build catches this.
 `title` and the on-page heading are deliberately separate. `title` always feeds the
 `<title>` tag and list entries; `show_title` controls only whether it also appears as an
 `<h1>` in the body, via the `{{page_heading}}` placeholder that every template carries.
+
+### Math
+
+Write LaTeX as `$inline$` and `$$display$$` in any markdown body. `\$` is a literal
+dollar, and an unpaired `$` stays literal (inline math may not cross a blank line).
+
+This needs generator support and cannot be done by writing the TeX straight into the
+markdown: CommonMark treats a backslash before ASCII punctuation as an escape, so `\\`,
+`\,`, `\{` and `\%` would be silently eaten, and `*` inside a formula would become
+emphasis. `extract_math` therefore lifts every math span out before cmark runs, leaves an
+inert `KTXMATH<n>END` placeholder, and `restore_math` splices the TeX back afterwards
+inside `<span class="math">`. Display math is a `span` too, blocked out with CSS —
+cmark wraps the placeholder in a `<p>`, and a block element inside `<p>` is invalid HTML.
+
+KaTeX (self-hosted in `static/katex/`, MIT) renders the spans in the browser via
+`static/js/math.js`. It is ~300KB, so the generator injects the assets through
+`{{math_assets}}` in the head partial **only on pages that actually contain math**. Only
+the `.woff2` fonts are vendored; the CSS lists `woff`/`ttf` fallbacks that no current
+browser will reach for.
 
 ### The resume page
 

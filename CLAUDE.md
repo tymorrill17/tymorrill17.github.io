@@ -195,6 +195,14 @@ Hover changes no colors; the bar is the whole affordance. `.nav-name` is exclude
 (`mark_current_link` in `ssg.cpp`), which keeps the active state static rather than
 depending on JavaScript. Pages with no nav entry, such as articles, simply match nothing.
 
+The article titles in `.page-list` carry the same centre-out underline, but built from a
+`background-image` gradient animated on `background-size` rather than a scaled `::after`.
+The mechanisms differ because the constraints do: nav links are `white-space: nowrap` and
+always one line, while list titles wrap on a narrow viewport, and an absolutely positioned
+bar has no dependable containing block across the fragments of a wrapped inline. The
+background follows the text, and `box-decoration-break: clone` gives each line its own bar.
+Do not "unify" these two onto one implementation without checking a long title on a phone.
+
 The theme toggle's sun/moon glyph is CSS `content` on `.theme-toggle::before`, keyed off
 the same selectors as the palette, so it is correct on first paint. `static/js/theme.js`
 only flips the attribute and persists the choice; an inline script in the head partial

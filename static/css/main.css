@@ -411,10 +411,36 @@ main a:hover {
   font-size: 1.75rem;
   font-weight: 600; /* size carries these, matching the headings */
   line-height: 1.2;
+
+  /* The nav's centre-out underline, drawn as a background gradient rather than a
+     scaled ::after. These titles wrap — "Interactive Real-Time Fluid Simulator"
+     takes two lines on a phone — and an absolutely positioned bar has no sane
+     containing block across the fragments of a wrapped inline; it would either
+     stretch the full column under a short last line or land somewhere arbitrary.
+     A background follows the text instead, and box-decoration-break gives each
+     line its own bar. Growth is centred because a 0%-wide background image sits
+     centred at background-position 50%, then fills as the size animates to 100%.
+     The cost is animating background-size instead of a transform, which repaints
+     rather than compositing — negligible for a 2px strip, and worth it here. */
+  padding-bottom: 0.12em; /* the bar paints inside the padding box, so make room */
+  background-image: linear-gradient(currentColor, currentColor);
+  background-repeat: no-repeat;
+  background-position: 50% 100%;
+  background-size: 0% 2px;
+  transition: background-size 0.18s ease-out;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
 }
 
-.page-list a:hover {
-  color: var(--accent);
+.page-list a:hover,
+.page-list a:focus-visible {
+  background-size: 100% 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .page-list a {
+    transition: none;
+  }
 }
 
 .page-description {

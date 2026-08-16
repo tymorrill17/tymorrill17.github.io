@@ -457,6 +457,9 @@ main a:hover {
 
 .page-date {
   margin: 0.15rem 0 0;
+  /* Flushed to the right edge of the measure, so the dates form their own
+     column against the ragged right of the titles and descriptions. */
+  text-align: right;
   font-size: 0.9rem;
   font-style: italic; /* the family has a real italic; no faux slant */
   color: var(--footer-fg);

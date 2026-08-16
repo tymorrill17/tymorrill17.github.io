@@ -323,7 +323,7 @@ nav a.is-current::after {
 }
 
 .theme-toggle:hover {
-  color: var(--accent-hover);
+  /* color: var(--accent-hover); */
 }
 
 /* U+2600 has both a text and an emoji presentation, and iOS resolves the bare
@@ -354,7 +354,7 @@ main a {
 }
 
 main a:hover {
-  color: var(--accent-hover);
+  /* color: var(--accent-hover); */
 }
 
 /* Math. Display formulas are spans (a block element inside cmark's <p> would be

@@ -207,6 +207,11 @@ static std::string render_body(const std::string& raw_markdown, const toml::tabl
 // Tag the nav link pointing at the page being rendered, so the active entry can
 // be styled without any client-side script. Matching includes the closing quote
 // so that href="/" does not also match href="/about.html".
+//
+// The class is merged into whatever class the link already carries rather than
+// appended as a second attribute: a tag with two class attributes keeps only the
+// first, so emitting one would silently drop either is-current or the class the
+// template set (the name link in the nav carries one).
 // ---------------------------------------------------------------------------
 
 static std::string mark_current_link(const std::string& html, const std::string& url) {
@@ -214,6 +219,15 @@ static std::string mark_current_link(const std::string& html, const std::string&
     const std::size_t position = html.find(href);
     if (position == std::string::npos)
         return html; // page has no nav entry, e.g. an article
+
+    // Bound the search to this one tag, so a class on a later link is not the
+    // one that gets extended.
+    const std::size_t tag_start = html.rfind('<', position);
+    const std::size_t tag_end   = html.find('>', position);
+    const std::size_t existing  = html.rfind("class=\"", tag_end);
+
+    if (existing != std::string::npos && existing > tag_start)
+        return html.substr(0, existing + 7) + "is-current " + html.substr(existing + 7);
 
     const std::size_t insert_at = position + href.size();
     return html.substr(0, insert_at) + " class=\"is-current\"" + html.substr(insert_at);

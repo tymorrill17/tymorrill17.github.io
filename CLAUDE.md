@@ -172,9 +172,25 @@ For visual changes, edit the tokens rather than individual rules wherever the ch
 be expressed as a color. When adding a color, add it as a token and define it in all
 three places above; a color defined only inside the media query breaks the toggle.
 
-Nav links wear `<` and `>` via `::before`/`::after`, faded to `opacity: 0` and revealed on
-hover. They are always laid out and only faded, never inserted, so hovering does not shift
-the nav. The same brackets stay lit on the current page: the generator adds
+`--selection` covers both browser highlights: `::selection` for dragged-over text and
+`-webkit-tap-highlight-color` for the flash mobile browsers paint on tap. The latter is
+inherited, so it is set once on `html`. The token is translucent on purpose — `::selection`
+sets only `background`, leaving selected text at `--fg`, so there is no second color to
+keep contrast-safe across both themes. Its alpha is higher in dark mode, where the same
+tint reads weaker. Never write `::selection, ::-moz-selection` as one selector list: a
+single unrecognised pseudo-element invalidates the entire rule.
+
+The nav is a three-track grid — `1fr auto 1fr` — with `.nav-left`, the `.nav-name` link,
+and `.nav-right` in it. The outer tracks stay equal whatever they hold, so the name sits on
+the page's centre line rather than halfway between the groups, and adding a link to either
+side is a `header.html` edit with no CSS to touch. Each group is a wrapping flex row. Below
+`34rem` the grid collapses to one column and the name is pulled up with `order: -1`.
+
+Nav links carry an underline bar on `::after` that grows out from the centre on hover — a
+pseudo-element rather than `text-decoration` so it can be animated, laid out at full width
+and only `scaleX`-ed, so it costs a compositor transform and nothing in the nav shifts.
+Hover changes no colors; the bar is the whole affordance. `.nav-name` is excluded, being an
+`<a>` with no href. The same bar stays out on the current page: the generator adds
 `class="is-current"` to whichever nav link's `href` equals the page being rendered
 (`mark_current_link` in `ssg.cpp`), which keeps the active state static rather than
 depending on JavaScript. Pages with no nav entry, such as articles, simply match nothing.
@@ -184,10 +200,27 @@ the same selectors as the palette, so it is correct on first paint. `static/js/t
 only flips the attribute and persists the choice; an inline script in the head partial
 applies the saved theme before paint to avoid a flash.
 
-Everything is set in ET Book, self-hosted from `static/fonts/et-book/` and declared as
+The sun is written `"\2600\FE0E"`, not `"\2600"`. U+2600 has both a text and an emoji
+presentation, and iOS resolves the bare codepoint to Apple Color Emoji; the trailing VS15
+demands the monochrome form. `font-variant-emoji: text` on `.theme-toggle` asks for the
+same thing in the newer spelling — keep both, since neither is universally honoured. The
+moon (U+263E) has no emoji presentation and so needs neither.
+
+Prose is set in ET Book, self-hosted from `static/fonts/et-book/` and declared as
 `@font-face` blocks at the top of `main.css`, with `--font-body` as the token. It is MIT
 licensed (`static/fonts/et-book/LICENSE`), and is the same face Tufte CSS uses. Four
 `.woff` faces are present: roman 400, italic 400, semi-bold 600, bold 700.
+
+The nav is the one exception: it uses Roboto Mono (`--font-nav`), self-hosted from
+`static/fonts/roboto-mono/` under OFL 1.1, so the navigation reads as an interface strip
+rather than as more of the book. Only Google's latin and latin-ext subsets are vendored —
+~56KB, with the `unicode-range` declarations carried over from Google's CSS. Characters
+outside those ranges fall back, which is what the theme toggle's sun/moon glyph already
+relies on.
+
+The two files are variable fonts covering `wght` 100–700, so there is one per subset
+rather than one per weight, and each `@font-face` declares `font-weight: 100 700`.
+Narrowing that to a single value would leave the browser synthesising every other weight.
 
 Headings follow book-typography convention rather than web convention — hierarchy comes
 from size and style, so they stay at `font-weight: 400` and `h3` is italic. Do not

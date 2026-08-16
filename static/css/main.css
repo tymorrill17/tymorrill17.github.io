@@ -37,9 +37,39 @@
   font-display: swap;
 }
 
+/* Roboto Mono for the nav only — a mono face reads as an interface element and
+   keeps the nav visually separate from the book-set prose below it. OFL 1.1; see
+   static/fonts/roboto-mono/LICENSE. Google's latin and latin-ext subsets only,
+   ~56KB total rather than the full family; anything outside those ranges (the
+   toggle's sun/moon) falls back, as intended.
+
+   These are variable files spanning wght 100-700, which is why there are two of
+   them and not one per weight — Google serves the same file for every weight. The
+   `font-weight: 100 700` range is what tells the browser that, so do not narrow it
+   to a single value or every weight but 400 gets synthesised. */
+
+@font-face {
+  font-family: "Roboto Mono";
+  src: url("/fonts/roboto-mono/roboto-mono-latin.woff2") format("woff2");
+  font-weight: 100 700;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: "Roboto Mono";
+  src: url("/fonts/roboto-mono/roboto-mono-latin-ext.woff2") format("woff2");
+  font-weight: 100 700;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
 /* Warm cream paper with a deep red accent. */
 :root {
   --font-body: "ET Book", Palatino, "Palatino Linotype", "Book Antiqua", Georgia, serif;
+  --font-nav: "Roboto Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 
   /* Width of the prose column. Everything that is read line-by-line is capped at
      this so the measure stays constant no matter how wide the page gets; the
@@ -53,6 +83,9 @@
   --nav-fg:        #6b6b5e;
   --nav-fg-hover:  #1a1a14;
   --footer-fg:     #8a8a7a;
+  /* Selected text and the mobile tap flash. Kept translucent so the glyphs show
+     through at full --fg rather than needing a second colour to stay legible. */
+  --selection:     rgba(160, 0, 0, 0.15);
   /* Lifts the resume off the page like a sheet of paper. */
   --paper-shadow:  0 2px 14px rgba(0, 0, 0, 0.14);
 }
@@ -70,6 +103,8 @@
     --nav-fg:        #9a9a8a;
     --nav-fg-hover:  #ffffff;
     --footer-fg:     #6e6e60;
+    /* Lifted alpha: the same tint reads weaker over a dark ground. */
+    --selection:     rgba(255, 92, 92, 0.22);
     /* A drop shadow is invisible against a dark ground, so the sheet gets a
        faint halo instead — it softens the cut-out edge of the white page. */
     --paper-shadow:  0 0 26px rgba(255, 255, 245, 0.07);
@@ -84,7 +119,26 @@
   --nav-fg:        #9a9a8a;
   --nav-fg-hover:  #ffffff;
   --footer-fg:     #6e6e60;
+  --selection:     rgba(255, 92, 92, 0.22);
   --paper-shadow:  0 0 26px rgba(255, 255, 245, 0.07);
+}
+
+/* The flash mobile browsers paint over a link the instant it is tapped. It is an
+   inherited property, so setting it once here covers every tappable thing on the
+   page; only elements that are actually tap targets ever draw it. */
+html {
+  -webkit-tap-highlight-color: var(--selection);
+}
+
+/* Only the background is set. Leaving `color` alone keeps selected text at --fg,
+   which a translucent tint stays legible under in both themes — naming a colour
+   here would mean maintaining a second one that has to clear contrast twice.
+
+   Do not fold ::-moz-selection in as a second selector: one unrecognised
+   pseudo-element invalidates the whole rule. Firefox has taken the unprefixed
+   form since 62, so it is not needed anyway. */
+::selection {
+  background: var(--selection);
 }
 
 body {
@@ -160,53 +214,95 @@ header {
   margin-bottom: 2.5rem;
 }
 
+/* Three tracks, so the name sits on the page's centre line rather than halfway
+   between the two link groups — the outer 1fr columns stay equal however many
+   links each side grows to, and the name never drifts when one side gains an
+   entry. The groups themselves flex, so adding a link is a template edit only. */
 nav {
-  display: flex;
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
   align-items: baseline;
-  flex-wrap: wrap;
   gap: 0.5rem 1.75rem;
 }
 
 .nav-left, .nav-right {
   display: flex;
   align-items: baseline;
-  gap: 1.75rem;
+  flex-wrap: wrap;
+  gap: 0.5rem 1.75rem;
+}
+
+.nav-right {
+  justify-content: flex-end;
 }
 
 nav a {
+  font-family: var(--font-nav);
   text-decoration: none;
   color: var(--accent);
-  font-size: 1.25rem;
-  font-weight: 600;
+  /* Containing block for the underline bar below. */
+  position: relative;
+  /* Mono faces set wide and even, so they carry at a smaller size than the
+     serif they replaced. */
+  font-size: 1.2rem;
+  font-weight: 400;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
 }
 
-nav a:hover {
-  color: var(--accent-hover);
+.nav-name {
+  font-size: 1.8rem;
+  font-weight: 400;
 }
 
-/* Angle brackets on hover, and pinned open on the page you are viewing.
-   They are always laid out and only faded, so nothing shifts on hover. */
-nav a::before,
-nav a::after {
-  opacity: 0;
+/* Below this the three tracks cannot hold the groups side by side, so the nav
+   stacks: name first, then the two groups centred beneath it. */
+@media (max-width: 34rem) {
+  nav {
+    grid-template-columns: 1fr;
+    justify-items: center;
+    row-gap: 0.75rem;
+  }
+
+  .nav-name {
+    order: -1;
+  }
+
+  .nav-left, .nav-right {
+    justify-content: center;
+  }
 }
 
-nav a::before {
+/* An underline that grows from the centre on hover, and stays out on the page you
+   are viewing. It is a pseudo-element rather than `text-decoration` so it can be
+   animated, and it is laid out at full width and only scaled — so the growth is a
+   compositor transform with nothing reflowing, and nothing in the nav shifts.
+
+   `.nav-name` is excluded: it is an `<a>` with no href, the site title rather than
+   a link, so there is nothing for a hover state to promise. */
+nav a:not(.nav-name)::after {
   content: "";
-  /* content: "\{ "; */
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -0.12em;
+  height: 2px;
+  background: currentColor;
+  transform: scaleX(0);
+  transform-origin: center;
+  transition: transform 0.18s ease-out;
 }
 
-nav a::after {
-  content: "";
-  /* content: " \}"; */
-}
-
-nav a:hover::before,
-nav a:hover::after,
-nav a.is-current::before,
+nav a:not(.nav-name):hover::after,
+nav a:not(.nav-name):focus-visible::after,
 nav a.is-current::after {
-  opacity: 1;
+  transform: scaleX(1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  nav a:not(.nav-name)::after {
+    transition: none;
+  }
 }
 
 /* Theme toggle. The glyph comes from CSS rather than JS so it is already
@@ -221,14 +317,22 @@ nav a.is-current::after {
   font-family: inherit;
   font-size: 1.25rem;
   line-height: 1;
+  /* Belongs with the \FE0E below: the modern spelling of the same request, for
+     engines that honour it. Ignored everywhere else, which is why both are here. */
+  font-variant-emoji: text;
 }
 
 .theme-toggle:hover {
   color: var(--accent-hover);
 }
 
+/* U+2600 has both a text and an emoji presentation, and iOS resolves the bare
+   codepoint to Apple Color Emoji — a full-colour sun next to monochrome nav text.
+   The trailing U+FE0E is VS15, the variation selector that demands the text form;
+   platforms that already drew a text glyph are unaffected. The moon needs no such
+   selector: U+263E has no emoji presentation to fall into. */
 .theme-toggle::before {
-  content: "\2600"; /* sun, shown in light mode */
+  content: "\2600\FE0E"; /* sun, shown in light mode */
 }
 
 @media (prefers-color-scheme: dark) {
@@ -302,10 +406,10 @@ main a:hover {
 }
 
 .page-list a {
-  color: var(--fg);
+  color: var(--accent);
   text-decoration: none;
   font-size: 1.75rem;
-  font-weight: 400; /* size carries these, matching the headings */
+  font-weight: 600; /* size carries these, matching the headings */
   line-height: 1.2;
 }
 

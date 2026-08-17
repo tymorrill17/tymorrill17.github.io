@@ -35,6 +35,7 @@ fine where it earns its place; keep it vanilla and load it from `static/js/`.
 ```bash
 make          # compile ssg.cpp -> ./ssg
 ./ssg         # render content/ + templates/ + static/ -> _site/
+./ssg --drafts  # same, but include pages marked draft = true
 make clean    # remove ./ssg and _site/
 ```
 
@@ -107,12 +108,37 @@ catches this — scope it to HTML, since minified `katex.min.js` contains `{{`.
 | `date`          | *(none)*      | `"Month D, YYYY"` — this exact format is what sorts   |
 | `description`   | *(none)*      | One-line summary shown under the title in list pages  |
 | `show_title`    | `false`       | Render the title as an `<h1>` at the top of the page  |
+| `draft`         | `false`       | Keep the page out of the build until it is published  |
 | `list_dir`      | *(siblings)*  | List pages only: content subdirectory to enumerate    |
 | `item_template` | `list-item`   | List pages only: partial used per entry               |
 
 `title` and the on-page heading are deliberately separate. `title` always feeds the
 `<title>` tag and list entries; `show_title` controls only whether it also appears as an
 `<h1>` in the body, via the `{{page_heading}}` placeholder that every template carries.
+
+### Drafts
+
+An unfinished page carries `draft = true` in its frontmatter. It lives in `content/`
+alongside everything else and is committed like any other file, but a plain `./ssg`
+skips it entirely: no HTML is written, and it appears in no list page. `./ssg --drafts`
+builds drafts too, so a draft can be read locally before it goes out. Publishing is
+deleting that one line — the file never moves, so its URL, its git history, and any link
+already shared stay put.
+
+The skip happens in the collection pass, not at render time. That is what keeps drafts
+out of list pages without a second filter: the render pass only ever sees published pages.
+
+Two things follow from the design and are deliberate:
+
+- The deploy workflow runs a bare `./ssg`, so a draft cannot reach the live site however
+  the repo is pushed. There is no `--drafts` path to production.
+- A build without `--drafts` deletes the output file a previous `--drafts` run left in
+  `_site/`, since the generator never otherwise clears stale output. Without that, a local
+  preview would keep serving a page the current build deliberately omitted.
+
+A previewed draft gets `[draft] ` prefixed to its `<title>`, so the browser tab
+distinguishes it from a live page. In a page template `{{title}}` only reaches the head
+partial, so nothing in the page body is affected.
 
 ### Math
 

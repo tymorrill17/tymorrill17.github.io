@@ -274,6 +274,7 @@ struct Page {
     std::string item_template_name;
     std::string list_dir; // for list pages: content subdirectory to list, empty means siblings
     bool show_title = false; // render the title as an <h1> at the top of the page
+    bool draft = false; // unfinished: committed to the repo, but not published
     std::string markdown;
     toml::table frontmatter;
 };
@@ -282,7 +283,20 @@ struct Page {
 // Main
 // ---------------------------------------------------------------------------
 
-int main() {
+int main(int argc, char* argv[]) {
+    // Drafts are left out unless asked for, so the bare ./ssg the deploy
+    // workflow runs cannot publish one no matter what is in the repo.
+    bool include_drafts = false;
+    for (int index = 1; index < argc; ++index) {
+        const std::string argument = argv[index];
+        if (argument == "--drafts") {
+            include_drafts = true;
+        } else {
+            std::cerr << "usage: ssg [--drafts]\n";
+            return 1;
+        }
+    }
+
     const std::filesystem::path content_dir   = "content";
     const std::filesystem::path output_dir    = "_site";
     const std::filesystem::path static_dir    = "static";
@@ -300,6 +314,7 @@ int main() {
 
     // --- First pass: collect all pages ---
     std::vector<Page> pages;
+    int skipped_drafts = 0;
 
     for (const std::filesystem::directory_entry& entry : std::filesystem::recursive_directory_iterator(content_dir)) {
         // We only care about .md files in the content directory
@@ -322,6 +337,17 @@ int main() {
         if (url == "/.")
             url = "/";
 
+        // Dropping a draft here rather than at render time is what keeps it out
+        // of list pages too: the second pass only ever sees published pages.
+        if (frontmatter["draft"].value_or(false) && !include_drafts) {
+            // A previous --drafts run leaves the rendered draft behind, and the
+            // generator never clears _site, so remove it. Otherwise a local
+            // preview would keep serving a page this build deliberately omitted.
+            std::filesystem::remove(output_path);
+            ++skipped_drafts;
+            continue;
+        }
+
         Page page;
         page.source        = entry.path();
         page.output        = output_path;
@@ -333,6 +359,7 @@ int main() {
         page.item_template_name = frontmatter["item_template"].value_or(std::string("list-item"));
         page.list_dir           = frontmatter["list_dir"].value_or(std::string(""));
         page.show_title         = frontmatter["show_title"].value_or(false);
+        page.draft              = frontmatter["draft"].value_or(false);
         page.markdown      = std::move(markdown);
         page.frontmatter   = std::move(frontmatter);
         pages.push_back(std::move(page));
@@ -401,14 +428,20 @@ int main() {
         // KaTeX is ~300KB, so it is pulled in only by pages that actually have math.
         // Substituted after head, which is where the placeholder lives.
         substitute(rendered_page, "math_assets", page_has_math ? math_assets : "");
-        substitute(rendered_page, "title",   page.title);
+        // In a page template {{title}} only ever reaches the head partial's
+        // <title>, so this marks the browser tab of a previewed draft and
+        // nothing else on the page.
+        substitute(rendered_page, "title",   page.draft ? "[draft] " + page.title : page.title);
         substitute(rendered_page, "header",  mark_current_link(header, page.url));
         substitute(rendered_page, "footer",  footer);
         substitute(rendered_page, "content", content_html);
 
         write_file(page.output, rendered_page);
-        std::cout << "built: " << page.output << "\n";
+        std::cout << "built: " << page.output << (page.draft ? "  (draft)" : "") << "\n";
     }
+
+    if (skipped_drafts > 0)
+        std::cout << "skipped " << skipped_drafts << " draft(s); ./ssg --drafts to preview them\n";
 
     // --- Copy static files ---
     if (std::filesystem::exists(static_dir)) {

@@ -43,14 +43,30 @@ make clean    # remove ./ssg and _site/
 run `make && ./ssg`** — running `./ssg` alone silently renders with the stale binary,
 which shows up as unsubstituted `{{...}}` placeholders in the output.
 
-Serve the built site:
+While writing, use the preview server instead — it rebuilds on save and reloads the
+browser, so the loop is just Ctrl-S:
+
+```bash
+./serve.py                 # http://127.0.0.1:8000, drafts included
+./serve.py --host 0.0.0.0  # reachable from a phone on the same network
+./serve.py --no-drafts     # the published view, as the deploy sees it
+./serve.py --no-reload     # rebuild on save, but leave the browser alone
+```
+
+It watches `content/`, `templates/`, `static/`, `ssg.cpp` and `Makefile`; a change to
+either of the last two runs `make` before `./ssg`, so editing the generator is the same
+one-key loop as editing a page. A failed compile or a bad frontmatter parse prints the
+error and keeps serving the last good build rather than blanking the site.
+
+Or serve the built output directly, without the watcher:
 
 ```bash
 python3 -m http.server 8000 --directory _site
 ```
 
 The generator resolves all paths relative to the current directory, so run it from the
-repository root.
+repository root. `serve.py` chdirs to its own directory first, so it can be started from
+anywhere.
 
 ## Architecture
 
@@ -61,6 +77,7 @@ templates/   Full-page HTML templates, selected per page by frontmatter
 static/      Copied verbatim into _site/, preserving structure
 _site/       Build output — generated, never edit by hand
 ssg.cpp      The entire generator
+serve.py     Preview server: rebuild on save, serve, reload. Not part of a build
 toml.hpp     Vendored dependency, do not modify
 ```
 
@@ -159,6 +176,60 @@ KaTeX (self-hosted in `static/katex/`, MIT) renders the spans in the browser via
 the `.woff2` fonts are vendored; the CSS lists `woff`/`ttf` fallbacks that no current
 browser will reach for.
 
+### Sidenotes
+
+Write `^[note text]` inline in any markdown body — Pandoc's inline-footnote syntax. The
+note is set in the gutter to the right of the prose, level with the line that cites it,
+numbered with a superscript at both ends. `\^[` is a literal caret followed by a bracket.
+
+`expand_sidenotes` rewrites the marker into the three elements the layout needs: a
+`<label class="sidenote-number">`, a checkbox, and `<span class="sidenote">`. This is a
+rewrite in place rather than math's lift-and-splice, because the opposite is wanted here:
+the note body stays in the stream for cmark, so emphasis, code spans, links and `$math$`
+all work inside a note. It runs *after* `extract_math` so TeX brackets (`\left[ ... \right]`)
+are inert placeholders by then and cannot unbalance the bracket matching.
+
+Numbering is a CSS counter, not something the generator writes, so inserting a note
+halfway through an article renumbers the rest with nothing to keep in sync. The `id` only
+has to be unique within the page, which the running index gives.
+
+Two cases deliberately degrade to literal text rather than failing the build: a marker
+that is never closed, and one whose closing bracket comes after a blank line. A note
+cannot span a paragraph break anyway — cmark would close the `<p>` mid-span — and without
+that second test a stray `^[` in prose would swallow every note after it, up to whichever
+`]` happened to balance.
+
+Sidenotes belong in the `--measure` prose column, which in practice means the `article`
+template. Nothing stops one being written in a `list` or `default` page, but those put
+content straight in `<main>` with no width cap, so the float would be pushed off the
+right edge of the page.
+
+### Images
+
+Images live in `static/images/` and are referenced by root-absolute path —
+`![alt text](/images/diagram.png)`. The path has to start with `/`: `static/` is copied to
+the root of `_site/`, but an article's own URL is a level down (`/articles/renderer.html`),
+so a relative `images/…` would resolve to `/articles/images/…` and 404. Nothing about
+images is generator-specific; the static copy pass takes any file type, and cmark handles
+the markdown.
+
+Remote URLs work too, but everything else the site depends on — fonts, KaTeX, the resume —
+is self-hosted, and an image is the one asset most likely to rot or change under you.
+Prefer the repo.
+
+`main img` caps images at the prose column. That rule is load-bearing: without it an image
+renders at its intrinsic pixel size, crossing the sidenote gutter on a desktop and forcing
+the page to scroll sideways on a phone.
+
+Two things markdown cannot express, both of which work today with no new code: a captioned
+figure, by writing `<figure>`/`<figcaption>` as raw HTML (`CMARK_OPT_UNSAFE` passes it
+through), and a margin figure, by putting the image inside a sidenote —
+`^[![alt](/images/x.png) The caption.]` scales it into the gutter. Neither has CSS of its
+own yet.
+
+Bear in mind that a diagram with a baked-in white background glares in dark mode. A
+transparent PNG or an SVG using `currentColor` sits on either palette.
+
 ### The resume page
 
 `templates/resume.html` embeds `static/resume/TylerMorrillResume.pdf` in an `<object>`
@@ -186,6 +257,31 @@ after `substitute_frontmatter` — otherwise a page missing one would leak a lit
 in CSS when blank. Any further optional key added to `list-item.html` needs the same
 treatment. Descriptions are plain text, not markdown.
 
+### The preview server
+
+`serve.py` is standard library only, deliberately: it is a convenience for writing, not
+part of the build, and it is not worth widening the dependency budget for. That rules out
+`watchdog` and the various live-reload packages, so change detection is an mtime poll
+every 0.3s over the ~50 watched files, which costs nothing measurable at this size and
+needs no platform-specific inotify code. A poll that sees a change waits for the tree to
+stop moving before building, since one save often lands as several filesystem events and
+some editors write a scratch file alongside the real one.
+
+Nothing in it writes to `_site/`. The reload snippet is spliced in as the HTML leaves the
+socket, so the built output stays byte-identical to what `./ssg` wrote and what the deploy
+publishes — there is no "works locally, broken live" gap and nothing to strip before
+committing. The browser holds a long poll against `/__livereload` carrying the build
+counter it was served with; a rebuild bumps the counter, the poll returns, the page
+reloads. Responses go out `Cache-Control: no-store`, without which an edited stylesheet
+keeps serving from cache and the rebuild looks broken.
+
+A failed `make` deliberately does not fall through to `./ssg`: the binary is stale at that
+point, and running it would quietly produce a site full of unsubstituted `{{...}}`. Both
+failure modes — compile error, bad frontmatter — print the error and leave the previous
+build in place. One thing it only warns about: the generator never clears `_site`, so
+deleting or renaming a page leaves the old HTML behind, and the watcher prints the stale
+path rather than removing files on your behalf.
+
 ## Styling
 
 `static/css/main.css` drives everything from CSS custom properties defined at the top.
@@ -205,6 +301,21 @@ sets only `background`, leaving selected text at `--fg`, so there is no second c
 keep contrast-safe across both themes. Its alpha is higher in dark mode, where the same
 tint reads weaker. Never write `::selection, ::-moz-selection` as one selector list: a
 single unrecognised pseudo-element invalidates the entire rule.
+
+`.sidenote` floats right with a negative `margin-right` of exactly its own width plus
+`--sidenote-gap`, which is what puts it in the gutter without disturbing the prose: the
+float's margin box then occupies `-gap` of horizontal space in the column, so no line
+wraps around it and nothing in the text moves. Narrowing that margin would eat into the
+measure instead of clearing it. `clear: right` keeps consecutive notes stacked rather than
+overlapping, at the cost of pushing a note down the page when several cluster in one
+paragraph.
+
+Below `72rem` there is no gutter left — 40em of prose at the 1.25rem body size is 800px,
+plus `--sidenote-width` + `--sidenote-gap` and the body's padding, is about 1144px — so
+the note is hidden and its number becomes a tap target that reveals it inline, via a
+`<label>` driving a `display: none` checkbox and `input:checked + .sidenote`. That is why
+the generator emits the three elements adjacent with no whitespace between them, and why
+this needs no JavaScript. Recompute the breakpoint if either token or `--measure` changes.
 
 The nav is a three-track grid — `1fr auto 1fr` — with `.nav-left`, the `.nav-name` link,
 and `.nav-right` in it. The outer tracks stay equal whatever they hold, so the name sits on

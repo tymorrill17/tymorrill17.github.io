@@ -184,6 +184,83 @@ static void restore_math(std::string& html, const std::vector<MathSpan>& spans) 
 }
 
 // ---------------------------------------------------------------------------
+// Sidenotes
+//
+// ^[note text] becomes the three elements a CSS-only sidenote needs: a numbered
+// label, a checkbox, and the note itself. The number is drawn by a CSS counter,
+// so nothing here has to track it and inserting a note mid-article renumbers the
+// rest for free; the id only has to be unique within the page, which the running
+// index gives. The checkbox is never seen — it is the state the narrow-viewport
+// layout toggles when the number is tapped, which is what keeps this free of
+// JavaScript.
+//
+// Unlike math this is a rewrite in place rather than a lift-and-splice: the note
+// body is left where it is for cmark, so emphasis, code spans and links work
+// inside a note. It runs after extract_math so that brackets in TeX (\left[ ...
+// \right]) are already inert placeholders and cannot unbalance the matching
+// below.
+// ---------------------------------------------------------------------------
+
+static std::string expand_sidenotes(const std::string& markdown) {
+    std::string output;
+    output.reserve(markdown.size());
+    std::size_t count = 0;
+
+    for (std::size_t index = 0; index < markdown.size();) {
+        // \^ is a literal caret; cmark drops the backslash further down the line.
+        if (markdown[index] == '\\' && index + 1 < markdown.size()) {
+            output += markdown[index];
+            output += markdown[index + 1];
+            index += 2;
+            continue;
+        }
+
+        const bool opens = markdown[index] == '^' && index + 1 < markdown.size() && markdown[index + 1] == '[';
+        if (!opens) {
+            output += markdown[index];
+            ++index;
+            continue;
+        }
+
+        // Count nesting, so a markdown link inside the note does not end it early.
+        std::size_t depth = 1;
+        std::size_t scan  = index + 2;
+        for (; scan < markdown.size() && depth > 0; ++scan) {
+            if (markdown[scan] == '\\')
+                ++scan; // skip the escaped character, whatever it is
+            else if (markdown[scan] == '[')
+                ++depth;
+            else if (markdown[scan] == ']')
+                --depth;
+        }
+
+        // Never closed, or closed only after a paragraph break: leave the text
+        // exactly as written. A note cannot span a blank line anyway, since cmark
+        // would close the <p> in the middle of the span, and without the second
+        // test a stray ^[ in prose would swallow every note after it up to
+        // whichever ] happened to balance. find returns npos when absent, which
+        // is never < scan.
+        if (depth != 0 || markdown.find("\n\n", index) < scan - 1) {
+            output += markdown[index];
+            ++index;
+            continue;
+        }
+
+        const std::string body = markdown.substr(index + 2, (scan - 1) - (index + 2));
+        const std::string id   = "sn-" + std::to_string(++count);
+
+        // No whitespace between the three: the narrow layout reveals the note
+        // with input:checked + .sidenote, which needs them to stay adjacent.
+        output += "<label for=\"" + id + "\" class=\"sidenote-number\"></label>";
+        output += "<input type=\"checkbox\" id=\"" + id + "\" class=\"sidenote-toggle\">";
+        output += "<span class=\"sidenote\">" + body + "</span>";
+        index = scan;
+    }
+
+    return output;
+}
+
+// ---------------------------------------------------------------------------
 // Render one page body: frontmatter substitution, math protection, markdown.
 // Sets has_math so the page can pull in the KaTeX assets only when it needs them.
 // ---------------------------------------------------------------------------
@@ -195,6 +272,7 @@ static std::string render_body(const std::string& raw_markdown, const toml::tabl
 
     std::vector<MathSpan> spans;
     markdown = extract_math(markdown, spans);
+    markdown = expand_sidenotes(markdown);
 
     std::string html = markdown_to_html(markdown);
     restore_math(html, spans);

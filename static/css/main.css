@@ -74,7 +74,13 @@
   /* Width of the prose column. Everything that is read line-by-line is capped at
      this so the measure stays constant no matter how wide the page gets; the
      leftover width to its right is the sidenote gutter. */
-  --measure: 38em;
+  --measure: 40em;
+
+  /* The sidenote and the space between it and the prose. Both in rem, not em:
+     they are measured against the page, not against the note's smaller type,
+     and the collapse breakpoint below is arithmetic on these two numbers. */
+  --sidenote-width: 16rem;
+  --sidenote-gap:   2.5rem;
 
   --bg:            #fffffc;
   --fg:            #1a1a14;
@@ -83,6 +89,9 @@
   --nav-fg:        #6b6b5e;
   --nav-fg-hover:  #1a1a14;
   --footer-fg:     #8a8a7a;
+  /* Sidenotes sit off to one side of the argument, so they are set a step back
+     from --fg — but only a step: they are meant to be read, unlike the footer. */
+  --sidenote-fg:   #56564a;
   /* Selected text and the mobile tap flash. Kept translucent so the glyphs show
      through at full --fg rather than needing a second colour to stay legible. */
   --selection:     rgba(160, 0, 0, 0.15);
@@ -103,6 +112,7 @@
     --nav-fg:        #9a9a8a;
     --nav-fg-hover:  #ffffff;
     --footer-fg:     #6e6e60;
+    --sidenote-fg:   #b0b0a2;
     /* Lifted alpha: the same tint reads weaker over a dark ground. */
     --selection:     rgba(255, 92, 92, 0.22);
     /* A drop shadow is invisible against a dark ground, so the sheet gets a
@@ -119,6 +129,7 @@
   --nav-fg:        #9a9a8a;
   --nav-fg-hover:  #ffffff;
   --footer-fg:     #6e6e60;
+  --sidenote-fg:   #b0b0a2;
   --selection:     rgba(255, 92, 92, 0.22);
   --paper-shadow:  0 0 26px rgba(255, 255, 245, 0.07);
 }
@@ -146,8 +157,9 @@ body {
   /* ET Book is a book face with a small x-height — it sets smaller than a sans at
      the same nominal size, so it wants ~18px rather than 16px to read comfortably.
      rem stays anchored to the 16px root, so nav sizing is unaffected. */
-  font-size: 1.1875rem;
-  line-height: 1.6;
+  /* font-size: 1.1875rem; */
+  font-size: 1.25rem;
+  line-height: 1.5;
   font-kerning: normal;
   font-variant-ligatures: common-ligatures;
   max-width: 1200px;
@@ -195,7 +207,7 @@ h3 {
 }
 
 main p {
-  margin: 0 0 1.1em;
+  margin: 0 0 1em;
   text-wrap: pretty; /* avoids a lone word on the last line */
 }
 
@@ -206,6 +218,103 @@ main ul, main ol {
 
 main li {
   margin-bottom: 0.3em;
+}
+
+/* Images are capped at the prose column. Without this an image renders at its
+   intrinsic pixel size: a screenshot from a 1600px-wide window would cross the
+   sidenote gutter and, on a phone, make the whole page scroll sideways.
+   height: auto keeps the aspect ratio once width is the binding constraint, and
+   display: block drops the descender gap an inline image leaves under itself. */
+main img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 1.6em 0;
+}
+
+/* Sidenotes. The note floats into the gutter --measure leaves to the right of
+   the prose, starting level with the line that cites it, so it is read where it
+   is referenced rather than at the foot of the page.
+
+   The float carries a negative right margin of its own width plus the gap, so
+   its margin box occupies -gap of horizontal space in the column: the prose does
+   not wrap around it and nothing in the text moves. Setting the margin to
+   anything less than the full width would eat into the measure. */
+main {
+  counter-reset: sidenote;
+}
+
+.sidenote {
+  float: right;
+  clear: right; /* consecutive notes stack instead of landing on each other */
+  width: var(--sidenote-width);
+  margin-right: calc(-1 * (var(--sidenote-width) + var(--sidenote-gap)));
+  margin-top: 0.25rem;
+  margin-bottom: 1rem;
+  font-size: 1rem;
+  line-height: 1.4;
+  color: var(--sidenote-fg);
+  text-align: left;
+}
+
+/* Numbering lives here rather than in the generator, so a note inserted halfway
+   through an article renumbers everything after it with no rebuild logic. The
+   counter is incremented by the marker, which precedes the note in the markup,
+   so both ::after and ::before below read the same value. */
+.sidenote-number {
+  counter-increment: sidenote;
+}
+
+/* position + top rather than vertical-align: super, which grows the line box and
+   would open a ragged gap in the leading of any paragraph carrying a note. */
+.sidenote-number::after,
+.sidenote::before {
+  content: counter(sidenote);
+  font-size: 0.75em;
+  position: relative;
+  top: -0.45em;
+  color: var(--accent);
+}
+
+.sidenote::before {
+  padding-right: 0.35em;
+}
+
+/* Pure state for the collapsed layout below, never rendered. display: none does
+   not stop a <label for> from toggling it, which is the whole trick. */
+.sidenote-toggle {
+  display: none;
+}
+
+/* Below this width there is no gutter left to float into: 40em of prose at the
+   1.25rem body size is 800px, plus 16rem + 2.5rem of note and 1.5rem of body
+   padding either side, is ~1144px. Under that the note folds back into the text
+   and its number becomes the tap target that reveals it. */
+@media (max-width: 72rem) {
+  .sidenote {
+    display: none;
+  }
+
+  /* A bare superscript is a ~10px tap target. Vertical padding on an inline box
+     overflows the line rather than growing it, and the horizontal padding is
+     cancelled by an equal negative margin, so this reaches thumb size without
+     moving a single word of the paragraph around it. */
+  .sidenote-number {
+    cursor: pointer;
+    padding: 0.7em 0.4em;
+    margin: 0 -0.4em;
+  }
+
+  .sidenote-toggle:checked + .sidenote {
+    display: block;
+    float: none;
+    width: auto;
+    margin: 0.8rem 0;
+    padding-left: 0.9rem;
+    /* currentColor, so the rule tracks --sidenote-fg across both themes without
+       a fourth token to keep in step. */
+    border-left: 1px solid currentColor;
+  }
 }
 
 /* Header */
@@ -345,16 +454,14 @@ nav a.is-current::after {
   content: "\263E";
 }
 
-/* Links in page content. The default underline sits on the baseline and clips
-   serif descenders, so it is dropped a little and thinned. */
+/* Links in page content. No underline: the accent colour is the whole
+   affordance, and hover changes nothing — the same restraint the nav shows,
+   where the bar is the only thing that moves. Nothing here needs
+   text-underline-offset or -thickness now; those existed to keep the default
+   underline off the serif descenders it used to clip. */
 main a {
   color: var(--accent);
-  text-underline-offset: 0.16em;
-  text-decoration-thickness: 0.06em;
-}
-
-main a:hover {
-  /* color: var(--accent-hover); */
+  text-decoration: none;
 }
 
 /* Math. Display formulas are spans (a block element inside cmark's <p> would be

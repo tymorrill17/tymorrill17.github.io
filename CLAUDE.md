@@ -230,6 +230,39 @@ own yet.
 Bear in mind that a diagram with a baked-in white background glares in dark mode. A
 transparent PNG or an SVG using `currentColor` sits on either palette.
 
+### References
+
+Citations go in a sidenote at the point of use. There is no bibliography section and no
+back-references — the gutter exists so the source can sit beside the claim it supports,
+which is the Tufte convention the layout was built for.
+
+A paper is author, italic title, venue and year, with a stable identifier as the link:
+
+```markdown
+The density estimate is the standard kernel sum^[Müller, Charypar and Gross,
+*Particle-Based Fluid Simulation for Interactive Applications*, SCA 2003.
+[doi:10.1145/846276.846298](https://doi.org/10.1145/846276.846298)]
+```
+
+Italic rather than quoted titles: it is the book convention the typography already
+follows, and cmark does not smarten quotes, so `"Title"` renders with straight typewriter
+quotes against ET Book's curly apostrophes. Link a DOI or an arXiv abstract page, never a
+publisher or personal-site PDF, which move.
+
+A website is an inline link on a descriptive phrase — `[VulkanGuide](https://vkguide.dev/)`.
+Save a sidenote for when there is something to *say* about the source rather than merely
+to point at it.
+
+Two limits worth knowing. Numbering is a per-page CSS counter, so citing one work twice
+produces two notes; give the full citation first and a short form (`^[Müller et al. 2003.]`)
+after. And a bare URL as link text can overflow the 16rem gutter — hyphens and slashes
+give the browser somewhere to break, but a long unbroken token does not, so title the link
+instead.
+
+Internal links follow the same shape but point at the *built* path, root-absolute:
+`[renderer](/articles/renderer.html)`. Linking the `.md` source 404s — only `static/` is
+copied verbatim — and a relative path resolves against `/articles/`, not the site root.
+
 ### The resume page
 
 `templates/resume.html` embeds `static/resume/TylerMorrillResume.pdf` in an `<object>`

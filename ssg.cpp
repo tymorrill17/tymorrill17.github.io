@@ -261,6 +261,211 @@ static std::string expand_sidenotes(const std::string& markdown) {
 }
 
 // ---------------------------------------------------------------------------
+// Images
+//
+// One pass over the rendered HTML that resolves every <img> against static/ and
+// decides what the page should actually carry. Two things happen here, both of
+// them things markdown has no way to say.
+//
+// Light/dark pairs. A diagram with a baked-in background glares on the opposite
+// palette, so a figure may ship as kernels_light.png beside kernels_dark.png.
+// The markdown names neither: it asks for /images/kernels.png, and both variants
+// are emitted, classed light-only and dark-only for main.css to show and hide.
+// <picture> with prefers-color-scheme is the obvious tool and the wrong one —
+// that media query reads the OS preference and cannot see the in-page theme
+// toggle, so it would strand the wrong variant on screen whenever the two
+// disagree. Two tags and a class each is what follows the toggle.
+//
+// SVG inlining. An SVG referenced through <img> is a separate document: no CSS
+// crosses that boundary, so stroke="currentColor" inside it resolves against the
+// SVG's own initial colour — black — rather than the page's --fg, and the drawing
+// glares in dark mode exactly like a baked-in PNG would. Splicing the file into
+// the document is what puts it in reach of the cascade, and it is the whole
+// reason to prefer an SVG diagram here. Doing it in the generator keeps the
+// markdown reading ![alt](/images/x.svg) instead of carrying a screenful of path
+// data.
+//
+// An exact filename hit wins over the pair, so a single-file image costs nothing
+// and naming a variant outright still works. A name matching neither a file nor a
+// complete pair is left alone and warned about rather than rewritten, since a
+// rewrite could only turn one broken URL into a different broken one. Remote and
+// relative src values are skipped: only a root-absolute path names a file here.
+//
+// Two limits, both fine at this size and neither worth pre-solving. An inlined
+// SVG is not cached across pages, so a drawing used on several pages ships with
+// each of them. And ids inside two SVGs on one page can collide, since nothing
+// namespaces them — Excalidraw only emits ids under <defs>, which is why this has
+// not bitten yet.
+// ---------------------------------------------------------------------------
+
+// kernels.png -> kernels_dark.png. A dot earlier in the path belongs to a
+// directory name, not to the file, and an extensionless name takes the suffix at
+// the end.
+static std::string add_suffix(const std::string& url, const std::string& suffix) {
+    const std::size_t slash = url.rfind('/');
+    const std::size_t dot   = url.rfind('.');
+
+    if (dot == std::string::npos || (slash != std::string::npos && dot < slash))
+        return url + suffix;
+
+    return url.substr(0, dot) + suffix + url.substr(dot);
+}
+
+// Merged into an existing class rather than appended as a second attribute, for
+// the reason mark_current_link gives: a tag carrying two class attributes keeps
+// only the first. The caller passes one opening tag, never a whole document —
+// an SVG file has class attributes further down that must not be the ones found.
+static std::string add_class(const std::string& tag, const std::string& name) {
+    if (name.empty())
+        return tag;
+
+    const std::size_t existing = tag.find("class=\"");
+    if (existing != std::string::npos)
+        return tag.substr(0, existing + 7) + name + " " + tag.substr(existing + 7);
+
+    // Just past the element name, so this works for <img and <svg alike.
+    const std::size_t after_name = tag.find_first_of(" \t\n\r/>", 1);
+    if (after_name == std::string::npos)
+        return tag;
+
+    return tag.substr(0, after_name) + " class=\"" + name + "\"" + tag.substr(after_name);
+}
+
+static std::string attribute_value(const std::string& tag, const std::string& name) {
+    const std::size_t key = tag.find(name + "=\"");
+    if (key == std::string::npos)
+        return "";
+
+    const std::size_t start = key + name.size() + 2;
+    const std::size_t end   = tag.find('"', start);
+    return end == std::string::npos ? "" : tag.substr(start, end - start);
+}
+
+// Splice an SVG file into the document in place of the <img> that referenced it.
+// Returns an empty string if the file cannot stand in for the tag, leaving the
+// caller to emit the original <img>: a missing or malformed drawing should show
+// up as a broken image rather than as a hole in the page.
+static std::string inline_svg(const std::filesystem::path& path, const std::string& tag,
+                              const std::string& class_name) {
+    std::ifstream file(path);
+    if (!file)
+        return "";
+
+    std::string svg((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+
+    // An XML declaration or doctype is legal at the head of a standalone .svg
+    // file and not legal in the middle of an HTML body.
+    const std::size_t root = svg.find("<svg");
+    if (root == std::string::npos)
+        return "";
+    svg.erase(0, root);
+
+    const std::size_t root_end = svg.find('>');
+    if (root_end == std::string::npos)
+        return "";
+
+    std::string root_tag = add_class(svg.substr(0, root_end + 1), class_name);
+
+    // The alt text is the only accessible name the drawing had; an <svg> is not
+    // labelled by anything unless told, so carry it across. An empty alt marks a
+    // decorative image, which is exactly what aria-hidden says.
+    const std::string alt = attribute_value(tag, "alt");
+    if (attribute_value(root_tag, "role").empty() && attribute_value(root_tag, "aria-label").empty()) {
+        const std::string label = alt.empty() ? " aria-hidden=\"true\"" : " role=\"img\" aria-label=\"" + alt + "\"";
+        root_tag = root_tag.substr(0, 4) + label + root_tag.substr(4);
+    }
+
+    return root_tag + svg.substr(root_end + 1);
+}
+
+static std::string resolve_images(const std::string& html) {
+    // Every path the generator touches is resolved against the working
+    // directory, so a root-absolute URL is static/ plus that path.
+    const std::filesystem::path static_dir = "static";
+
+    std::string output;
+    output.reserve(html.size());
+
+    for (std::size_t index = 0; index < html.size();) {
+        const std::size_t tag_start = html.find("<img ", index);
+        const std::size_t tag_end   = tag_start == std::string::npos ? std::string::npos : html.find('>', tag_start);
+        if (tag_end == std::string::npos) {
+            output.append(html, index, std::string::npos);
+            break;
+        }
+
+        output.append(html, index, tag_start - index);
+        const std::string tag = html.substr(tag_start, tag_end - tag_start + 1);
+        index = tag_end + 1;
+
+        // The value's offset is what is kept, not the value alone: the same text
+        // may appear again in the alt text, where it must not be substituted.
+        const std::size_t source_start = tag.find("src=\"");
+        if (source_start == std::string::npos) {
+            output += tag;
+            continue;
+        }
+
+        const std::size_t value_start = source_start + 5;
+        const std::size_t value_end   = tag.find('"', value_start);
+        if (value_end == std::string::npos) {
+            output += tag;
+            continue;
+        }
+
+        const std::string source = tag.substr(value_start, value_end - value_start);
+
+        // Only a root-absolute path names a file in static/. A remote URL, or a
+        // relative one, is the author's business.
+        if (source.empty() || source.front() != '/') {
+            output += tag;
+            continue;
+        }
+
+        // Each variant is the URL to emit and the class that reveals it; a lone
+        // entry with no class is the ordinary single-file case.
+        std::vector<std::pair<std::string, std::string>> variants;
+        if (std::filesystem::exists(static_dir / source.substr(1))) {
+            variants.push_back({source, ""});
+        } else {
+            const std::string light = add_suffix(source, "_light");
+            const std::string dark  = add_suffix(source, "_dark");
+
+            if (!std::filesystem::exists(static_dir / light.substr(1)) ||
+                !std::filesystem::exists(static_dir / dark.substr(1))) {
+                std::cerr << "warning: no image at " << source << ", and no _light/_dark pair either\n";
+                output += tag;
+                continue;
+            }
+
+            variants.push_back({light, "light-only"});
+            variants.push_back({dark, "dark-only"});
+        }
+
+        // A pair is emitted adjacent with no whitespace between the two: they sit
+        // in the text flow, where a space would be a visible gap once one shows.
+        for (const auto& [url, class_name] : variants) {
+            const std::filesystem::path path = static_dir / url.substr(1);
+
+            if (path.extension() == ".svg") {
+                const std::string inlined = inline_svg(path, tag, class_name);
+                if (!inlined.empty()) {
+                    output += inlined;
+                    continue;
+                }
+                std::cerr << "warning: " << path << " is not usable as inline SVG; left as <img>\n";
+            }
+
+            std::string variant_tag = tag;
+            variant_tag.replace(value_start, value_end - value_start, url);
+            output += add_class(variant_tag, class_name);
+        }
+    }
+
+    return output;
+}
+
+// ---------------------------------------------------------------------------
 // Render one page body: frontmatter substitution, math protection, markdown.
 // Sets has_math so the page can pull in the KaTeX assets only when it needs them.
 // ---------------------------------------------------------------------------
@@ -275,6 +480,7 @@ static std::string render_body(const std::string& raw_markdown, const toml::tabl
     markdown = expand_sidenotes(markdown);
 
     std::string html = markdown_to_html(markdown);
+    html = resolve_images(html);
     restore_math(html, spans);
 
     has_math = !spans.empty();

@@ -224,12 +224,43 @@ main li {
    intrinsic pixel size: a screenshot from a 1600px-wide window would cross the
    sidenote gutter and, on a phone, make the whole page scroll sideways.
    height: auto keeps the aspect ratio once width is the binding constraint, and
-   display: block drops the descender gap an inline image leaves under itself. */
-main img {
+   display: block drops the descender gap an inline image leaves under itself.
+   An inlined SVG needs the same cap and does not inherit it: the generator
+   splices the drawing in as an <svg> element, which main img cannot match, and
+   the width/height attributes an exporter writes would otherwise fix its size. */
+main img,
+main svg {
   display: block;
   max-width: 100%;
   height: auto;
   margin: 1.6em 0;
+}
+
+/* Theme-swapped images. A diagram with a baked-in background glares on the other
+   palette, so both variants are emitted and one is hidden. <picture> with
+   prefers-color-scheme would be the obvious tool and is the wrong one: it reads
+   the OS preference and cannot see the in-page toggle, so it would strand the
+   wrong variant on screen whenever the two disagree. Hence the same three
+   selector groups the palette itself is declared in. The hidden one is
+   display: none, so screen readers announce only the visible alt text. */
+.dark-only {
+  display: none;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .light-only {
+    display: none;
+  }
+  :root:not([data-theme="light"]) .dark-only {
+    display: block;
+  }
+}
+
+:root[data-theme="dark"] .light-only {
+  display: none;
+}
+:root[data-theme="dark"] .dark-only {
+  display: block;
 }
 
 /* Sidenotes. The note floats into the gutter --measure leaves to the right of

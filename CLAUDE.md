@@ -78,6 +78,7 @@ static/      Copied verbatim into _site/, preserving structure
 _site/       Build output — generated, never edit by hand
 ssg.cpp      The entire generator
 serve.py     Preview server: rebuild on save, serve, reload. Not part of a build
+recolor.py   Rewrites an exported SVG's ink to currentColor. Run by hand, not by the build
 toml.hpp     Vendored dependency, do not modify
 ```
 
@@ -209,17 +210,19 @@ right edge of the page.
 Images live in `static/images/` and are referenced by root-absolute path —
 `![alt text](/images/diagram.png)`. The path has to start with `/`: `static/` is copied to
 the root of `_site/`, but an article's own URL is a level down (`/articles/renderer.html`),
-so a relative `images/…` would resolve to `/articles/images/…` and 404. Nothing about
-images is generator-specific; the static copy pass takes any file type, and cmark handles
-the markdown.
+so a relative `images/…` would resolve to `/articles/images/…` and 404. The static copy
+pass takes any file type and cmark handles the markdown, so an ordinary raster image needs
+nothing from the generator. `resolve_images` in `ssg.cpp` handles the two cases that do:
+inlining an SVG, and resolving a light/dark pair. Both are described below, and both leave
+an image they do not apply to exactly as cmark wrote it.
 
 Remote URLs work too, but everything else the site depends on — fonts, KaTeX, the resume —
 is self-hosted, and an image is the one asset most likely to rot or change under you.
 Prefer the repo.
 
-`main img` caps images at the prose column. That rule is load-bearing: without it an image
-renders at its intrinsic pixel size, crossing the sidenote gutter on a desktop and forcing
-the page to scroll sideways on a phone.
+`main img, main svg` caps images at the prose column. That rule is load-bearing: without it
+an image renders at its intrinsic pixel size, crossing the sidenote gutter on a desktop and
+forcing the page to scroll sideways on a phone.
 
 Two things markdown cannot express, both of which work today with no new code: a captioned
 figure, by writing `<figure>`/`<figcaption>` as raw HTML (`CMARK_OPT_UNSAFE` passes it
@@ -227,8 +230,76 @@ through), and a margin figure, by putting the image inside a sidenote —
 `^[![alt](/images/x.png) The caption.]` scales it into the gutter. Neither has CSS of its
 own yet.
 
-Bear in mind that a diagram with a baked-in white background glares in dark mode. A
-transparent PNG or an SVG using `currentColor` sits on either palette.
+Bear in mind that a diagram with a baked-in white background glares in dark mode. There
+are two ways out, and which one applies depends on whether the drawing can be reduced to
+a single ink colour.
+
+#### Inline SVG and currentColor
+
+An SVG whose strokes are `currentColor` inherits the page's `color`, which is `--fg`, so
+one file serves both palettes and follows the toggle with nothing to keep in sync. This
+only works when the SVG is *inline* in the document: referenced through `<img>` it is a
+separate document, no CSS crosses that boundary, and `currentColor` resolves against the
+SVG's own initial colour — black — on both themes.
+
+So `resolve_images` in `ssg.cpp` splices the file in. Write the ordinary
+`![alt](/images/kernels.svg)` and the drawing is read from `static/` and emitted as an
+`<svg>` element in place of the `<img>`, which keeps a screenful of path data out of the
+markdown. The alt text becomes `role="img"` plus `aria-label`, since an `<svg>` has no
+accessible name unless given one; an empty alt becomes `aria-hidden="true"`, which is what
+a decorative image means. An XML declaration or doctype at the head of the file is dropped,
+being legal in a standalone `.svg` and not inside an HTML body. A file that is missing or
+has no `<svg` root falls back to the original `<img>` and warns, so a broken drawing looks
+broken rather than leaving a hole in the page.
+
+`main img, main svg` caps both at the prose column. The second half of that selector is
+load-bearing: an inlined drawing carries the `width` attribute its exporter wrote, and
+`main img` cannot match an `<svg>`.
+
+Excalidraw has no currentColor option — it bakes literal hex into every shape. `recolor.py`
+does the conversion after export; `./recolor.py drawing.svg --list` reports what colours
+are in the file, and the default converts the most common stroke. It leaves fills alone
+unless asked, because `currentColor` carries exactly one colour and a filled shape turned
+text-coloured is rarely wanted, and it only reports the embedded `@font-face` blocks rather
+than stripping them, since dropping them changes how text renders. A drawing using several
+colours to distinguish things converts only its ink; the accents stay literal, which is
+usually right, as a red or a green reads on either palette.
+
+Two limits of inlining, both fine at this size. An inlined SVG is not cached across pages,
+so a drawing used on several pages ships with each. And ids inside two SVGs on one page can
+collide, since nothing namespaces them — Excalidraw only emits ids under `<defs>`, which is
+why this has not bitten yet.
+
+#### Light and dark variants
+
+For a drawing that cannot be reduced to one ink colour — a screenshot, or anything whose
+fills must genuinely differ per theme — ship it twice as `name_light.png` and
+`name_dark.png` and reference the name that is in neither file:
+`![alt](/images/kernels.png)`. `resolve_images` emits both, classed `light-only` and
+`dark-only`, which `main.css` shows and hides. This works for any file type, `.svg`
+included, in which case both variants are inlined.
+
+The rule is exact match first: if `/images/kernels.png` exists on disk it is emitted
+untouched, so this costs nothing for ordinary images and naming a variant outright still
+works. A name matching neither the file nor a complete pair is left alone and warned about
+on stderr, because rewriting it could only turn one broken URL into a different broken URL.
+Remote and relative `src` values are skipped outright — only a root-absolute path names a
+file in `static/`.
+
+The class is merged into whatever class the tag already carries, for the same reason
+`mark_current_link` merges: a tag with two `class` attributes keeps only the first. The
+search is bounded to the root tag, since an Excalidraw file carries a `class` further down
+that must not be the one found. And because the pass runs over rendered HTML rather than
+markdown, it applies equally to an `<img>` hand-written inside a `<figure>`.
+
+`<picture>` with `prefers-color-scheme` is the obvious alternative and it is wrong here:
+that media query sees the OS preference and not the in-page theme toggle, so it would
+strand the wrong variant on screen whenever a reader's toggle disagrees with their OS.
+Two tags and a class each is what follows the toggle.
+
+The cost is that a pair is always paid for twice — browsers fetch both `<img>` variants
+regardless of which is displayed, and an inlined pair puts both drawings in the HTML. Prefer
+a single `currentColor` SVG wherever the drawing allows it.
 
 ### References
 

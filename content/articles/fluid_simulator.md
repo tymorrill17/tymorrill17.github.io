@@ -9,26 +9,30 @@ draft = true
 # {{title}}
 
 This is an overview of my implementation of a particle-based fluid simulation using the smoothed-particle hydrodymanics (SPH) method.
-This version is implemented using multiple cores on the CPU via threading. The visualization is done using my own [renderer](/articles/renderer.html)
-The program is written in [Odin](https://odin-lang.org/).^[Odin is a C-like systems programming language. It's a blast to use for graphics and
-game programming.]
+This version is implemented using multiple cores on the CPU via multithreading. The visualization is done using my own [renderering engine](/articles/renderer.html)
+The program is written in [Odin](https://odin-lang.org/).^[Odin is a C-like systems programming language. It aims to keep the control and simplicity of C while
+providing modern conveniences. It's a blast to use for graphics and game programming.]
 
-I decided to go with SPH initially because it is fast, relatively stable, and straightforward to parallelize.
+I decided to go with the SPH method because it is fast, relatively stable, and straightforward to parallelize.
 
 # Smoothed-Particle Hydrodynamics
 
-Smoothed-Particle Hydrodynamics (SPH) was initially developed for astrophysics. It is a method of discretizing field quantities using particles with
-positions and velocities governed by the fluid. The total field value may be found at any point in space by interpolating each particle's
-contribution using a smoothing kernel. More precisely, for a query point $r$, a scalar field quantity A can be represented as
+Smoothed-Particle Hydrodynamics (SPH) was initially developed for astrophysics. It provides a way to interpolate field quantities of a fluid
+using values carried by discrete particles. Each particle has a position, velocity, and acceleration, which are determined by the fluid itself,
+along with quantities relevant to the fluid equation like density or viscosity. The total field value may be found at any
+point in space by interpolating each particle's contribution using a smoothing kernel. In mathematical notation, for a query point $r$, a scalar field
+quantity $A$ can be represented as
 
 $$A_S(r) = \sum_jm_j\frac{A_j}{\rho_j}W(r-r_j, h), \tag{1}$$
 
 where $j$ loops over each particle and $m_j, A_j, \rho_j, r_j$ are the mass, field quantity, density, and position of particle $j$, respectively.
-$W(r,h)$ is the smoothing kernel with radius $h$ which satisfies
+$W(r,h)$ is the smoothing kernel^[There are many options for the smoothing kernel, and
+you need not use the same one for each quantity being found. For example, you may want a kernel with a higher rate of change near
+the center for finding pressure and a more smooth kernel like a gaussian for density. ![A cubic spline kernel and its gradient](/images/kernels.svg)] with radius $h$ which satisfies
 
 $$\int_{\Omega} W(r,h)dr = 1$$
 
-for any $h$.^[Here, $\Omega$ should be of the same dimension as the space of the simulation.]
+for any $h$.^[Here, $\Omega$ is the entire domain of the simulation.]
 
 Intuitively, we are looping over each particle and adding its weighted contribution to the total quantity's value. In practice, $h$ acts as
 a cutoff value since the contribution becomes negligible the larger the distance becomes.^[Spoiler alert! I wonder if we can save computation by
@@ -94,6 +98,9 @@ between the two pressure values to force symmetry.
 $$-\nabla P(r_i) = -\sum_jm_j\frac{P_i + P_j}{2\rho_j}\nabla W(r-r_j, h), \tag{6}$$
 
 # Spatial Partitioning
+
+Currently, there is a serious unaddressed performance issue present in the algorithm. Every time equation $(1)$ is used, there is an
+$\mathcal{O}(N^2)$ loop, where $N$ is the number of particles. Using our smoothing kernel, there is a way to
 
 Currently, this algorithm has an $\mathcal{O}(N^2)$ each time equation $(1)$ is used, which is quite far from ideal. However, as hinted
 previously, there is a sensical way to reduce this complexity. By partitioning the domain into a grid

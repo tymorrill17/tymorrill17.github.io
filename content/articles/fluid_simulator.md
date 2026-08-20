@@ -122,4 +122,4 @@ grouped together in memory and can be looped over quick and easy.
 <!-- (h-r)^2, & |r|\le h\\ -->
 <!-- 0, & \text{otherwise} -->
 <!-- \end{cases}$ -->
-<!-- ![A cubic spline kernel and its gradient](/images/kernels.svg)] with radius $h$ which satisfies -->
+<!-- ![A cubic spline kernel and its gradient](/images/kernels_auto.svg)] with radius $h$ which satisfies -->

@@ -301,6 +301,18 @@ static std::string expand_sidenotes(const std::string& markdown) {
 // kernels.png -> kernels_dark.png. A dot earlier in the path belongs to a
 // directory name, not to the file, and an extensionless name takes the suffix at
 // the end.
+// True when the filename, before its extension, ends in `suffix`. The inverse of
+// add_suffix, and used to read a naming convention back off a URL.
+static bool has_name_suffix(const std::string& url, const std::string& suffix) {
+    const std::size_t slash = url.rfind('/');
+    std::size_t dot = url.rfind('.');
+
+    if (dot == std::string::npos || (slash != std::string::npos && dot < slash))
+        dot = url.size();
+
+    return dot >= suffix.size() && url.compare(dot - suffix.size(), suffix.size(), suffix) == 0;
+}
+
 static std::string add_suffix(const std::string& url, const std::string& suffix) {
     const std::size_t slash = url.rfind('/');
     const std::size_t dot   = url.rfind('.');
@@ -426,7 +438,13 @@ static std::string resolve_images(const std::string& html) {
         // entry with no class is the ordinary single-file case.
         std::vector<std::pair<std::string, std::string>> variants;
         if (std::filesystem::exists(static_dir / source.substr(1))) {
-            variants.push_back({source, ""});
+            // A drawing named *_auto keeps the colours its exporter baked in and is
+            // flipped wholesale on the dark palette by a CSS filter, so no dark
+            // value has to be chosen for it — and none can be. The class is the
+            // whole mechanism; see "Automatic dark mode" in CLAUDE.md. Only the
+            // exact-match branch reads it: a _light/_dark pair is the manual route,
+            // and asking for both at once names nothing coherent.
+            variants.push_back({source, has_name_suffix(source, "_auto") ? "auto-dark" : ""});
         } else {
             const std::string light = add_suffix(source, "_light");
             const std::string dark  = add_suffix(source, "_dark");

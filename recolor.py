@@ -7,6 +7,11 @@ inlined into a page and painted with currentColor inherits the page's `color`
 instead, which on this site is --fg — so it follows the theme toggle with no
 second file, no second download, and nothing for the generator to resolve.
 
+currentColor names exactly one colour, though, so a drawing that also carries a
+wash or an accent needs --map, which repaints a named colour through a CSS custom
+property instead. Same idea, one level up: the page owns the value, the drawing
+owns only the name.
+
 Standard library only, for the same reason serve.py is: this is a convenience
 for preparing an asset, not part of the build, and not worth widening the
 dependency budget for.
@@ -25,6 +30,7 @@ Usage:
     ./recolor.py diagram.svg --list          # what colours are in here?
     ./recolor.py diagram.svg -o out.svg      # convert the dominant stroke
     ./recolor.py diagram.svg --ink '#1e1e1e' --strip-background --in-place
+    ./recolor.py diagram.svg --map '#ffc9c9=--fig-red-soft' --in-place
 """
 
 import argparse
@@ -56,7 +62,7 @@ NOT_A_COLOUR = {"", "none", "transparent", "currentcolor", "inherit"}
 def normalise(value):
     """A comparable form of a colour, or None if it does not name one."""
     value = value.strip().lower()
-    if value in NOT_A_COLOUR or value.startswith("url("):
+    if value in NOT_A_COLOUR or value.startswith(("url(", "var(")):
         return None
     # #abc and #aabbcc are the same colour and must compare equal.
     if re.fullmatch(r"#[0-9a-f]{3}", value):
@@ -101,6 +107,95 @@ def recolour(svg, ink, properties):
     return svg, changed, text_changed
 
 
+# One element's opening tag. The token rewrite has to work per-element rather
+# than per-attribute, because it moves paint out of an attribute and into that
+# element's style, which may already exist.
+TAG = re.compile(r"<[A-Za-z][-\w]*\b[^>]*?/?>")
+STYLE_ATTR = re.compile(r'\bstyle="([^"]*)"')
+
+# Matched with its leading whitespace, since the attribute is removed rather than
+# rewritten and would otherwise leave a gap behind.
+PAINT_ATTRIBUTE = re.compile(r'\s*\b(stroke|fill)="([^"]*)"')
+
+TOKEN_NAME = re.compile(r"--[A-Za-z0-9_-]+")
+
+
+def parse_map(pairs):
+    """--map '#ffc9c9=--fig-red-soft' -> {'#ffc9c9': '--fig-red-soft'}."""
+    mapping = {}
+    for pair in pairs:
+        literal, _, name = pair.partition("=")
+        colour, name = normalise(literal), name.strip()
+        if colour is None or not TOKEN_NAME.fullmatch(name):
+            sys.exit(f"error: --map wants '#rrggbb=--token-name', got {pair!r}")
+        mapping[colour] = name
+    return mapping
+
+
+def map_to_tokens(svg, mapping):
+    """Repaint mapped colours through CSS custom properties.
+
+    currentColor solves one colour per document — the ink. A drawing that also
+    carries a wash or an accent needs a name per colour, and a custom property is
+    that name: inlined into the page, the SVG resolves it against :root exactly
+    like everything else does, so one file follows the toggle with a palette
+    rather than a single colour.
+
+    The declaration goes into an inline `style` rather than back into the
+    presentation attribute it replaces. fill="var(--x)" is an SVG 2 behaviour and
+    its support is uneven; a browser that does not parse it drops the attribute
+    and paints the shape black, which is the worst available failure. var() in a
+    style attribute is as old as custom properties themselves. The literal stays
+    on as the var() fallback, which is also what keeps the drawing correct when it
+    is opened on its own, outside any page that defines the token.
+    """
+    changed = 0
+
+    def convert(tag):
+        nonlocal changed
+        added = []
+
+        def from_attribute(match):
+            nonlocal changed
+            prop, value = match.group(1), match.group(2)
+            token = mapping.get(normalise(value) or "")
+            if token is None:
+                return match.group(0)
+            changed += 1
+            added.append(f"{prop}: var({token}, {value.strip()})")
+            return ""
+
+        def from_declaration(match):
+            nonlocal changed
+            prop, value = match.group(1), match.group(2)
+            token = mapping.get(normalise(value) or "")
+            if token is None:
+                return match.group(0)
+            changed += 1
+            return f"{prop}: var({token}, {value.strip()})"
+
+        tag = PAINT_ATTRIBUTE.sub(from_attribute, tag)
+
+        existing = STYLE_ATTR.search(tag)
+        if not (added or existing):
+            return tag
+
+        declarations = []
+        if existing:
+            kept = DECLARATION.sub(from_declaration, existing.group(1)).strip().rstrip(";")
+            if kept:
+                declarations.append(kept)
+        declarations.extend(added)
+        style = 'style="' + "; ".join(declarations) + '"'
+
+        if existing:
+            return tag[: existing.start()] + style + tag[existing.end() :]
+        close = "/>" if tag.endswith("/>") else ">"
+        return tag[: -len(close)].rstrip() + " " + style + close
+
+    return TAG.sub(lambda m: convert(m.group(0)), svg), changed
+
+
 def strip_background(svg):
     match = BACKGROUND_RECT.search(svg)
     if not match:
@@ -121,6 +216,8 @@ def main():
     parser.add_argument("--list", action="store_true", help="report the colours present and exit")
     parser.add_argument("--ink", help="the colour to convert (default: the most common stroke)")
     parser.add_argument("--fills", action="store_true", help="convert fills too, not just strokes")
+    parser.add_argument("--map", action="append", default=[], metavar="COLOUR=--TOKEN",
+                        help="repaint COLOUR through a CSS custom property; repeatable")
     parser.add_argument("--strip-background", action="store_true", help="drop the full-bleed background rect")
     parser.add_argument("--strip-fonts", action="store_true", help="drop embedded @font-face blocks")
     arguments = parser.parse_args()
@@ -146,21 +243,33 @@ def main():
             print(f"\n{font_count} embedded @font-face block(s), {font_bytes / 1024:.1f} KB of {original_size / 1024:.1f} KB")
         return
 
+    if arguments.map:
+        mapping = parse_map(arguments.map)
+        svg, mapped = map_to_tokens(svg, mapping)
+        for colour, token in mapping.items():
+            print(f"mapped {colour} -> var({token}, {colour})", file=sys.stderr)
+        print(f"mapped {mapped} occurrence(s)", file=sys.stderr)
+        if not mapped:
+            print("warning: no mapped colour matched — run with --list to see what is in the file", file=sys.stderr)
+
     ink = normalise(arguments.ink) if arguments.ink else None
     if arguments.ink and ink is None:
         sys.exit(f"error: {arguments.ink!r} does not name a colour")
-    if ink is None:
+    # --map on its own is a complete job. Falling through to the default ink guess
+    # would convert a stroke the caller never mentioned.
+    if ink is None and not arguments.map:
         if not found["stroke"]:
             sys.exit("error: no stroke colours found; pass --ink to say what to convert")
         ink = found["stroke"].most_common(1)[0][0]
         print(f"ink: {ink} (most common stroke; --ink overrides)", file=sys.stderr)
 
-    properties = {"stroke", "fill"} if arguments.fills else {"stroke"}
-    svg, changed, text_changed = recolour(svg, ink, properties)
-    detail = f" ({text_changed} in text)" if text_changed else ""
-    print(f"recoloured {changed} occurrence(s) of {ink}{detail}", file=sys.stderr)
-    if not changed:
-        print("warning: nothing matched — run with --list to see what is in the file", file=sys.stderr)
+    if ink is not None:
+        properties = {"stroke", "fill"} if arguments.fills else {"stroke"}
+        svg, changed, text_changed = recolour(svg, ink, properties)
+        detail = f" ({text_changed} in text)" if text_changed else ""
+        print(f"recoloured {changed} occurrence(s) of {ink}{detail}", file=sys.stderr)
+        if not changed:
+            print("warning: nothing matched — run with --list to see what is in the file", file=sys.stderr)
 
     if arguments.strip_background:
         svg, removed = strip_background(svg)

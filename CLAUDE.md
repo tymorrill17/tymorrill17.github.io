@@ -212,9 +212,10 @@ Images live in `static/images/` and are referenced by root-absolute path —
 the root of `_site/`, but an article's own URL is a level down (`/articles/renderer.html`),
 so a relative `images/…` would resolve to `/articles/images/…` and 404. The static copy
 pass takes any file type and cmark handles the markdown, so an ordinary raster image needs
-nothing from the generator. `resolve_images` in `ssg.cpp` handles the two cases that do:
-inlining an SVG, and resolving a light/dark pair. Both are described below, and both leave
-an image they do not apply to exactly as cmark wrote it.
+nothing from the generator. `resolve_images` in `ssg.cpp` handles the three cases that do:
+inlining an SVG, marking an `_auto` drawing for the dark-mode filter, and resolving a
+light/dark pair. All three are described below, and all three leave an image they do not
+apply to exactly as cmark wrote it.
 
 Remote URLs work too, but everything else the site depends on — fonts, KaTeX, the resume —
 is self-hosted, and an image is the one asset most likely to rot or change under you.
@@ -231,8 +232,65 @@ through), and a margin figure, by putting the image inside a sidenote —
 own yet.
 
 Bear in mind that a diagram with a baked-in white background glares in dark mode. There
-are two ways out, and which one applies depends on whether the drawing can be reduced to
-a single ink colour.
+are four ways out, and the right one depends on how much of the drawing's palette you
+want to control:
+
+| route | dark values chosen | good for |
+| ------------------------- | ------------- | ------------------------------------- |
+| `_auto` + CSS filter      | none          | the default; anything flat-coloured   |
+| `currentColor`            | none          | a one-ink line drawing                |
+| `var(--fig-*)` + `--map`  | one per colour| when a colour has to be exactly right |
+| `_light`/`_dark` pair     | a whole file  | photographs; last resort              |
+
+They are not composable. A drawing painted with `currentColor` must not also be filtered:
+its ink is already light on the dark palette, and the filter would flip it straight back to
+dark. Pick one per drawing.
+
+#### Automatic dark mode
+
+A drawing whose file is named `something_auto.svg` (or `.png`) keeps every colour its
+exporter baked in and is put through a CSS filter on the dark palette instead:
+
+```css
+--auto-dark-filter: invert(93%) hue-rotate(180deg);
+```
+
+`invert()` flips lightness, and takes hue with it; `hue-rotate(180deg)` puts the hue back.
+So light and dark trade places while a red stays a red — the drawing's own palette is
+preserved, rather than replaced. 93% rather than 100% stops the ink at a near-white instead
+of a pure one; it is the constant Excalidraw ships, and Excalidraw's dark mode is this same
+filter. Transparent pixels stay transparent, so the page background shows through and there
+is no baked-in white box to strip.
+
+`resolve_images` reads the suffix off the filename and adds `class="auto-dark"`; `main.css`
+carries the filter in the same three selector groups the palette itself uses, so the toggle
+moves it in both directions. `static/images/spatial_partitioning_auto.svg` is the drawing
+on the SPH article, and is a plain unedited Excalidraw export — the point of this route is
+that there is nothing to prepare and no dark value to choose.
+
+It is the default, and its cost is that it is all-or-nothing. There is no way to exempt one
+colour, so an accent that already read on both grounds gets flipped anyway, and a
+photograph or a screenshot embedded in the drawing inverts with everything else. It also
+drives the ink to a neutral grey — `#d1d1d1` against a `--fg` of `#e8e8dc` — so a filtered
+drawing sits a shade cooler than the prose beside it, and cannot follow if the palette is
+retuned. When either of those matters, convert the drawing instead and drop the suffix.
+
+Only the exact-match branch reads the suffix. A `_light`/`_dark` pair is the manual route,
+and a name asking for both at once names nothing coherent.
+
+**Export with Excalidraw's dark mode off.** That toggle does not attach a filter to the
+export — it bakes the filtered colours into the file, and it is the same filter this site
+applies, so the drawing arrives already inverted and gets inverted a second time. The
+symptom is a drawing that ignores the theme and merely flips whenever the theme changes:
+washed-out pale ink on the light palette, and dark-on-dark once the filter lands. Worse,
+`invert(93%)` is not an involution — applied twice, `#1e1e1e` lands on `#383838` rather
+than back on `#1e1e1e` — so the dark rendering is wrong rather than accidentally right.
+The `_auto` file must be the plain light export; the filter is what produces the dark one.
+
+The tell is a light-dominant ink: `./recolor.py drawing.svg --list` on a correct export
+reports a near-black as its most common stroke, and a dark-mode export reports a near-white
+(`#d3d3d3` is exactly what `#1e1e1e` becomes). Worth checking whenever a drawing is
+re-exported, since nothing in the build can tell the two apart.
 
 #### Inline SVG and currentColor
 
@@ -270,11 +328,53 @@ so a drawing used on several pages ships with each. And ids inside two SVGs on o
 collide, since nothing namespaces them — Excalidraw only emits ids under `<defs>`, which is
 why this has not bitten yet.
 
+#### A palette of named colours
+
+`currentColor` carries exactly one colour, so it runs out as soon as a drawing uses
+colour to single something out — a highlighted region, a second series, a fill behind the
+ink. A CSS custom property is the same trick one level up: an inlined SVG resolves
+`var(--fig-red)` against `:root` exactly as it resolves `currentColor` against the page's
+`color`, so the page owns the value and the drawing owns only the name. One file, both
+palettes, no second download.
+
+No `--fig-*` token is defined at the moment — every drawing on the site takes one of the
+cheaper routes. Adding one means declaring it in all three places the palette is declared,
+so the toggle moves it, exactly like `--fg` or `--accent`.
+
+Choosing the dark value is the work this route asks for, and it is not a matter of dimming
+the light one. A bright fill is the case that needs it most: a wash picked against cream
+paper is a near-white on a dark ground and reads as a hole cut in the page rather than as a
+tint, so its dark value is the same hue composited down to just off `--bg` — a shape sitting
+on the page, not a light source on it. A saturated stroke usually survives with a small lift
+(`#fa5252` → `#ff6b6b`), and a mid-dark colour goes the other way and wants lifting rather
+than dimming (`#2f9e44` → `#51cf66`). The filter route gets all three of those roughly right
+for free, which is why this one is reserved for when *roughly* is not good enough.
+
+`recolor.py --map` does the rewrite, and is repeatable:
+
+```bash
+./recolor.py drawing.svg --map '#ffc9c9=--fig-red-soft' --map '#fa5252=--fig-red' --in-place
+```
+
+It writes an inline `style` declaration rather than putting `var()` back in the presentation
+attribute it replaces. `fill="var(--x)"` is SVG 2 behaviour and support for it is uneven; an
+engine that does not parse it drops the attribute and paints the shape black, which is the
+worst failure available. `var()` in a `style` attribute is as old as custom properties. The
+literal stays on as the `var()` fallback, which is also what keeps the drawing correct when
+it is opened on its own, outside any page that defines the token. Inline style beats a
+stylesheet rule, so a drawing converted this way cannot be repainted from CSS afterwards —
+change the token, not the drawing.
+
+`--map` and `--ink` compose: `--ink` sends the ink to `currentColor`, `--map` sends the
+accents to tokens, and a run with only `--map` deliberately skips the default ink guess so
+it does not convert a stroke nobody asked about. Colours inside an SVG's own `<style>` block
+are not rewritten; Excalidraw only puts `@font-face` there.
+
 #### Light and dark variants
 
-For a drawing that cannot be reduced to one ink colour — a screenshot, or anything whose
-fills must genuinely differ per theme — ship it twice as `name_light.png` and
-`name_dark.png` and reference the name that is in neither file:
+For a drawing that survives none of the three cheaper routes — a photograph, or anything
+whose fills must genuinely differ per theme rather than merely invert — ship it twice as
+`name_light.png` and `name_dark.png` and reference the name that is in neither file:
 `![alt](/images/kernels.png)`. `resolve_images` emits both, classed `light-only` and
 `dark-only`, which `main.css` shows and hides. This works for any file type, `.svg`
 included, in which case both variants are inlined.
@@ -297,9 +397,11 @@ that media query sees the OS preference and not the in-page theme toggle, so it 
 strand the wrong variant on screen whenever a reader's toggle disagrees with their OS.
 Two tags and a class each is what follows the toggle.
 
-The cost is that a pair is always paid for twice — browsers fetch both `<img>` variants
-regardless of which is displayed, and an inlined pair puts both drawings in the HTML. Prefer
-a single `currentColor` SVG wherever the drawing allows it.
+This is the last resort of the four, not the first. The cost is that a pair is always paid
+for twice — browsers fetch both `<img>` variants regardless of which is displayed, and an
+inlined pair puts both drawings in the HTML. Reach for it only when the drawing is a
+photograph, where inverting is exactly wrong; anything flat-coloured is better served by
+`_auto`, which is one file and no second export.
 
 ### References
 

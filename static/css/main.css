@@ -97,6 +97,15 @@
   --selection:     rgba(160, 0, 0, 0.15);
   /* Lifts the resume off the page like a sheet of paper. */
   --paper-shadow:  0 2px 14px rgba(0, 0, 0, 0.14);
+
+  /* Dark mode for a drawing that kept its exported colours — see the .auto-dark
+     rule below. invert() flips lightness, and takes hue with it; hue-rotate(180deg)
+     puts the hue back, so a red stays red while light and dark trade places. 93%
+     rather than 100% stops the ink at a near-white instead of a pure one, which is
+     the value Excalidraw ships. Declared here, on the light palette, because it is
+     one constant rather than a per-theme value — the rules that use it are the
+     dark ones. */
+  --auto-dark-filter: invert(93%) hue-rotate(180deg);
 }
 
 /* Dark counterpart: the cream inverted to a warm near-black, with the accent
@@ -236,8 +245,15 @@ main svg {
   margin: 1.6em 0;
 }
 
-/* Theme-swapped images. A diagram with a baked-in background glares on the other
-   palette, so both variants are emitted and one is hidden. <picture> with
+/* Theme-swapped images, in the two flavours the generator emits: a _light/_dark
+   pair, one of which is hidden, and an _auto drawing, which is a single file put
+   through a filter. The filter is the cheap route — it costs nothing per colour
+   and works on a raster too — but it is all-or-nothing, and it drives the ink to a
+   neutral grey rather than to --fg. A drawing whose ink is already currentColor
+   must not carry .auto-dark: it is light on the dark palette already, and the
+   filter would flip it straight back to dark.
+
+   A diagram with a baked-in background glares on the other palette, so both variants are emitted and one is hidden. <picture> with
    prefers-color-scheme would be the obvious tool and is the wrong one: it reads
    the OS preference and cannot see the in-page toggle, so it would strand the
    wrong variant on screen whenever the two disagree. Hence the same three
@@ -254,6 +270,9 @@ main svg {
   :root:not([data-theme="light"]) .dark-only {
     display: block;
   }
+  :root:not([data-theme="light"]) .auto-dark {
+    filter: var(--auto-dark-filter);
+  }
 }
 
 :root[data-theme="dark"] .light-only {
@@ -261,6 +280,9 @@ main svg {
 }
 :root[data-theme="dark"] .dark-only {
   display: block;
+}
+:root[data-theme="dark"] .auto-dark {
+  filter: var(--auto-dark-filter);
 }
 
 /* Sidenotes. The note floats into the gutter --measure leaves to the right of

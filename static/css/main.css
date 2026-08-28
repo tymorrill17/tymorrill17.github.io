@@ -66,10 +66,47 @@
   unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
 }
 
+/* Cascadia Code for code blocks, self-hosted from static/fonts/cascadia-code/.
+   OFL 1.1; see static/fonts/cascadia-code/LICENSE.
+
+   This is Microsoft's upstream release rather than the Nerd Fonts patched build
+   of it, CaskaydiaCode. The letterforms are the same drawing — the patch only
+   adds ~3500 icon glyphs, which no C, C++, Odin or Python snippet has a use for,
+   at roughly thirty times the file size.
+
+   Latin and latin-ext only, one variable file per subset spanning wght 200-700:
+   the same arrangement as Roboto Mono above, and the font-weight range is
+   load-bearing for the same reason. No italic is vendored — comments are told
+   apart by colour, and an italic face would be a third file on every page that
+   carries code.
+
+   Cascadia's programming ligatures (-> != >=) are contextual alternates and are
+   therefore on by default. `font-variant-ligatures: none` on main pre turns them
+   off if they ever read as a distraction rather than as an operator. */
+
+@font-face {
+  font-family: "Cascadia Code";
+  src: url("/fonts/cascadia-code/cascadia-code-latin.woff2") format("woff2");
+  font-weight: 200 700;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: "Cascadia Code";
+  src: url("/fonts/cascadia-code/cascadia-code-latin-ext.woff2") format("woff2");
+  font-weight: 200 700;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
 /* Warm cream paper with a deep red accent. */
 :root {
   --font-body: "ET Book", Palatino, "Palatino Linotype", "Book Antiqua", Georgia, serif;
   --font-nav: "Roboto Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --font-mono: "Cascadia Code", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 
   /* Width of the prose column. Everything that is read line-by-line is capped at
      this so the measure stays constant no matter how wide the page gets; the
@@ -98,6 +135,25 @@
   /* Lifts the resume off the page like a sheet of paper. */
   --paper-shadow:  0 2px 14px rgba(0, 0, 0, 0.14);
 
+  /* Code. The box is a shade of the paper rather than a grey, so it reads as the
+     same sheet held a little further from the light.
+
+     Seven syntax colours, all desaturated towards the warm ground they sit on: a
+     code block is set inside prose here, not in an editor, and a full-strength
+     editor theme would shout across the page. Keywords take the accent's red so
+     the block belongs to the site's palette; the rest are spaced around the wheel
+     far enough to be told apart at a glance. Named literals (true, nil, None) are
+     deliberately given the number colour rather than an eighth of their own. */
+  --code-bg:     #f4f1e6;
+  --code-border: #e6e1cf;
+  --tok-com:     #6f6c5c;
+  --tok-kw:      #9c2f28;
+  --tok-typ:     #8a6414;
+  --tok-str:     #41692f;
+  --tok-num:     #2c6675;
+  --tok-fn:      #3a5691;
+  --tok-pre:     #7a4a7c;
+
   /* Dark mode for a drawing that kept its exported colours — see the .auto-dark
      rule below. invert() flips lightness, and takes hue with it; hue-rotate(180deg)
      puts the hue back, so a red stays red while light and dark trade places. 93%
@@ -124,6 +180,21 @@
     --sidenote-fg:   #b0b0a2;
     /* Lifted alpha: the same tint reads weaker over a dark ground. */
     --selection:     rgba(255, 92, 92, 0.22);
+    /* The code box lifts off the dark ground rather than sinking into it, which is
+       the inverse of what it does on paper — an inset panel would read as a hole.
+       The syntax colours are lifted rather than dimmed: a mid-dark hue that carried
+       on cream disappears against #14140d, so each one keeps its hue and gains
+       lightness. */
+    --code-bg:     #1e1e15;
+    --code-border: #2f2f22;
+    --tok-com:     #8b8875;
+    --tok-kw:      #ef7a6f;
+    --tok-typ:     #dcb96a;
+    --tok-str:     #a3cc80;
+    --tok-num:     #74c3d2;
+    --tok-fn:      #93b3ea;
+    --tok-pre:     #cb9dd2;
+
     /* A drop shadow is invisible against a dark ground, so the sheet gets a
        faint halo instead — it softens the cut-out edge of the white page. */
     --paper-shadow:  0 0 26px rgba(255, 255, 245, 0.07);
@@ -141,6 +212,20 @@
   --sidenote-fg:   #b0b0a2;
   --selection:     rgba(255, 92, 92, 0.22);
   --paper-shadow:  0 0 26px rgba(255, 255, 245, 0.07);
+  /* The code box lifts off the dark ground rather than sinking into it, which is
+     the inverse of what it does on paper — an inset panel would read as a hole.
+     The syntax colours are lifted rather than dimmed: a mid-dark hue that carried
+     on cream disappears against #14140d, so each one keeps its hue and gains
+     lightness. */
+  --code-bg:     #1e1e15;
+  --code-border: #2f2f22;
+  --tok-com:     #8b8875;
+  --tok-kw:      #ef7a6f;
+  --tok-typ:     #dcb96a;
+  --tok-str:     #a3cc80;
+  --tok-num:     #74c3d2;
+  --tok-fn:      #93b3ea;
+  --tok-pre:     #cb9dd2;
 }
 
 /* The flash mobile browsers paint over a link the instant it is tapped. It is an
@@ -284,6 +369,59 @@ main svg {
 :root[data-theme="dark"] .auto-dark {
   filter: var(--auto-dark-filter);
 }
+
+/* Code. Blocks are highlighted at build time by the tokenizer in ssg.cpp, which
+   emits nothing but .tok-* spans, so the entire appearance of a snippet lives in
+   this section and follows the theme toggle like every other colour on the page.
+
+   The box is capped at the prose column, exactly as an image is: a line longer
+   than the measure scrolls inside the box rather than pushing the whole page
+   sideways on a phone. */
+main pre {
+  font-family: var(--font-mono);
+  /* A mono face sets visually larger than ET Book at the same nominal size — the
+     book face has a small x-height and Cascadia a large one — so code is stepped
+     down to sit level with the prose around it rather than to shout over it. */
+  font-size: 0.75em;
+  line-height: 1.5;
+  tab-size: 4;
+  margin: 1.6em 0;
+  padding: 1em 1.15em;
+  background-color: var(--code-bg);
+  border: 1px solid var(--code-border);
+  border-radius: 4px;
+  overflow-x: auto;
+}
+
+/* normalize.css sets font-family on <code> directly, and a declaration beats
+   inheritance however specific the parent's is — without this the <code> cmark
+   nests inside every <pre> would fall back to the generic monospace and none of
+   the vendoring above would reach a code block. */
+main pre code {
+  font-family: inherit;
+}
+
+/* Inline code: every <code> that is not the one inside a <pre>. Same tint as the
+   block, so the two read as the same material at two sizes. */
+main :not(pre) > code {
+  font-family: var(--font-mono);
+  font-size: 0.82em;
+  background-color: var(--code-bg);
+  border: 1px solid var(--code-border);
+  border-radius: 3px;
+  padding: 0.08em 0.3em;
+}
+
+/* The seven classes the tokenizer emits. Everything it leaves unmarked —
+   punctuation, and any identifier it cannot classify — stays at --fg, which is
+   what keeps a snippet from turning into a rainbow. */
+.tok-com { color: var(--tok-com); }
+.tok-kw  { color: var(--tok-kw);  }
+.tok-typ { color: var(--tok-typ); }
+.tok-str { color: var(--tok-str); }
+.tok-num { color: var(--tok-num); }
+.tok-fn  { color: var(--tok-fn);  }
+.tok-pre { color: var(--tok-pre); }
 
 /* Sidenotes. The note floats into the gutter --measure leaves to the right of
    the prose, starting level with the line that cites it, so it is read where it
@@ -601,6 +739,22 @@ main a {
   .page-list a {
     transition: none;
   }
+}
+
+/* Only ever rendered by ./ssg --drafts, so this is a local-preview marker rather
+   than something the live site carries. Set in the nav's mono face, at the muted
+   footer colour: it has to be legible beside a 1.75rem title without competing
+   with it. Inline, so it trails the last line of a title that wraps. */
+.draft-tag {
+  font-family: var(--font-nav);
+  font-size: 0.7rem;
+  letter-spacing: 0.06em;
+  color: var(--footer-fg);
+  border: 1px solid var(--code-border);
+  border-radius: 3px;
+  padding: 0.1em 0.4em;
+  vertical-align: 0.35em; /* lifted off the baseline of the much larger title */
+  white-space: nowrap;
 }
 
 .page-description {

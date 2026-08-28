@@ -158,6 +158,12 @@ A previewed draft gets `[draft] ` prefixed to its `<title>`, so the browser tab
 distinguishes it from a live page. In a page template `{{title}}` only reaches the head
 partial, so nothing in the page body is affected.
 
+A list page marks its draft entries the same way: `list-item.html` carries a
+`{{draft_tag}}` placeholder, filled with a `<span class="draft-tag">[DRAFT]</span>` beside
+the title and blanked otherwise, so the tag exists only in a `--drafts` build. It is
+substituted explicitly, like `date` and `description`, because `draft` is a boolean and
+`substitute_frontmatter` only fills string-valued keys.
+
 ### Math
 
 Write LaTeX as `$inline$` and `$$display$$` in any markdown body. `\$` is a literal
@@ -403,6 +409,98 @@ inlined pair puts both drawings in the HTML. Reach for it only when the drawing 
 photograph, where inverting is exactly wrong; anything flat-coloured is better served by
 `_auto`, which is one file and no second export.
 
+### Code blocks
+
+A fenced block carries a language and is syntax-highlighted at build time:
+
+````markdown
+```odin
+density :: proc(ps: ^[dynamic]Particle) -> f32 { ... }
+```
+````
+
+Four languages are described — `c`, `cpp`, `odin`, `python`, with the usual
+aliases (`c++`, `cc`, `cxx`, `h`, `hpp`, `hxx`, `py`). A fence with no language
+renders as a plain escaped block. So does one naming a language meant to be left
+alone (`text`, `console`, `sh`, `bash`, `make`, `toml`, `md`, `diff` and friends);
+any *other* name is a typo or a language nobody has taught the generator yet, and
+warns on stderr while still rendering the code.
+
+Highlighting happens in `ssg.cpp` rather than in the browser. A client-side
+library was the obvious alternative and buys nothing here: Odin is in neither
+highlight.js nor Prism, so either would have wanted a hand-written grammar anyway,
+and all four languages are C-like enough to share one tokenizer parameterised by a
+handful of flags. Doing it at build time costs the reader no download and no flash
+of unhighlighted code, and the output is plain `<span class="tok-…">`, so a
+snippet is coloured by the same palette as everything else and follows the theme
+toggle for free.
+
+Seven token classes are emitted — `tok-com`, `tok-kw`, `tok-typ`, `tok-str`,
+`tok-num`, `tok-fn`, `tok-pre`. Anything the tokenizer cannot classify is left
+unmarked and stays at `--fg`, which is what keeps a block from becoming a
+rainbow. A named literal (`true`, `nil`, `None`, `NULL`) is deliberately given the
+number colour rather than an eighth class of its own.
+
+The lexer knows what each language needs and nothing more: `//` or `#` line
+comments, `/* */` blocks (nested, for Odin), `#include <stdio.h>` with the path as
+a string, Odin's `#directive`, `$T` and `` `raw string` ``, Python's `"""docstring"""`
+and head-of-line `@decorator`, string prefixes that bind to the quote after them
+(`f"…"`, `L"…"`), and C++14's `1'000'000`. An identifier followed by `(` is called
+a function, which is as much as a lexer can know without a symbol table and reads
+correctly often enough to be worth it. A user-defined type is not coloured, since
+telling one from a variable needs the same symbol table.
+
+#### How a block survives the other passes
+
+`extract_code` runs **first** in `render_body`, before `extract_math` and
+`expand_sidenotes`. This is not a preference, it is required: the languages use
+those passes' markers as syntax. `$T` is a polymorphic type parameter in Odin and
+two of them in one snippet would be lifted as a math span; `arr^[i]` is an index
+through a pointer and would become a sidenote. Without this pass, code would reach
+cmark already mangled. Inline `` `code` `` is lifted for the same reason, which is
+why `` `$T` `` in prose is now safe too.
+
+It is a lift-and-splice like math, with one difference worth understanding: only
+the *body* of a block is replaced by a placeholder, and the fence itself is left in
+the markdown. cmark therefore still decides what is a code block, what belongs to a
+list item, and what the `class="language-…"` says — this pass never has to reason
+about block structure, and there is no risk of a `<pre>` landing inside a `<p>`.
+Inline spans keep their backticks the same way. `restore_code` runs last, after
+`resolve_images` and `restore_math`, so nothing downstream can read the highlighted
+markup as its own.
+
+Three limits follow, all deliberate:
+
+- Fence detection is a flat line scan, so it accepts any leading indent and
+  dedents the body by the same amount. That is what lets a block inside a list item
+  work, at the cost that a line reading ```` ``` ```` inside a four-space *indented*
+  code block would be taken for a fence. The site uses fenced blocks, so this has
+  not come up.
+- An inline span is bounded to one line. It cannot cross a paragraph break anyway,
+  and the bound stops an unmatched backtick reaching for one several paragraphs down
+  — the same reasoning as the sidenote scanner's blank-line test.
+- `substitute_frontmatter` still runs before all of this, so a literal `{{title}}`
+  inside a snippet is substituted. Exact-match only, so ordinary braces are safe.
+
+#### Styling
+
+`main pre` is the box: `--code-bg` a shade of the paper, a `--code-border`
+hairline, and `overflow-x: auto`. The box is capped at the prose column exactly as
+an image is, so a line longer than the measure scrolls inside the box rather than
+pushing the whole page sideways on a phone.
+
+Code is set in Cascadia Code at `0.82em`. The step down is not decoration: a mono
+face sets visually larger than ET Book at the same nominal size — the book face has
+a small x-height and Cascadia a large one — so code at 1em would shout over the
+prose it sits in.
+
+`main pre code { font-family: inherit }` is load-bearing. `normalize.css` sets
+`font-family` on `code` directly, and a declaration beats inheritance however
+specific the parent's selector is, so without it the `<code>` cmark nests inside
+every `<pre>` falls back to the generic monospace and the vendored face never
+reaches a code block. Inline code is selected as `main :not(pre) > code`, which is
+what keeps the two apart.
+
 ### References
 
 Citations go in a sidenote at the point of use. There is no bibliography section and no
@@ -572,6 +670,25 @@ relies on.
 The two files are variable fonts covering `wght` 100–700, so there is one per subset
 rather than one per weight, and each `@font-face` declares `font-weight: 100 700`.
 Narrowing that to a single value would leave the browser synthesising every other weight.
+
+Code is the second exception: `--font-mono` is Cascadia Code, self-hosted from
+`static/fonts/cascadia-code/` under OFL 1.1, latin and latin-ext only, and variable over
+`wght` 200–700 on the same terms as Roboto Mono — two files, ~82KB, and the weight range
+must stay a range.
+
+This is Microsoft's upstream release, not the Nerd Fonts patched build of it,
+**CaskaydiaCode**. They are the same drawing; the patch only adds ~3500 icon glyphs, which
+no C, C++, Odin or Python snippet has a use for, at roughly thirty times the file size.
+Reach for the patched build only if a snippet ever genuinely needs a Powerline or devicon
+glyph, and subset it before vendoring if so.
+
+No italic is vendored, which is why comments are told apart by colour alone. Adding one
+would put a third font file on every page that carries code; if a code block is ever set in
+italic without it, the browser will synthesise a slant rather than fall back, and it will
+look wrong next to ET Book's real italic.
+
+Cascadia's programming ligatures (`->`, `!=`, `>=`) are contextual alternates and are on by
+default. `font-variant-ligatures: none` on `main pre` turns them off.
 
 Headings follow book-typography convention rather than web convention — hierarchy comes
 from size and style, so they stay at `font-weight: 400` and `h3` is italic. Do not

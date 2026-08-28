@@ -114,8 +114,100 @@ The only particles for which the smoothing function may be nonzero are the ones 
 query point's cell.
 
 To get this partitioned space, we first define a hash function that maps each cell to an integer. Every update step, we will keep track of the
-cell hash for each particle. The particles are then sorted based on their cell's hash value. This ensures that particles in the same cell are
-grouped together in memory and can be looped over quick and easy.
+cell hash for each particle. The particles are then sorted based on their cell's hash value. This ensures that we can access particles in the same
+cell to be looped over quick and easy. Here is what the code looks like for building this spatial hashing:
+
+```odin
+update_spatial_lookup :: proc(positions: [][2]f32, sim_state: ^FluidSimState) {
+    count               := sim_state.particle_count
+    hash_size           := sim_state.hash_size
+    cell_size           := sim_state.physics_cfg.density_smoothing_radius
+    spatial_lookup      := sim_state.spatial_lookup[:count]
+    sorted_indices      := sim_state.sorted_particle_index[:count]
+    cell_prefix_sum     := sim_state.cell_prefix_sum[:hash_size + 1]
+    cell_particle_count := sim_state.cell_particle_count[:hash_size]
+
+    // Capture the grid hash for each particle, keep a histogram of grid hashes
+    slice.zero(cell_particle_count)
+    for i in 0..<count {
+        grid_cell_hash := hash_grid_cell(
+            get_grid_cell(positions[i], cell_size), sim_state.hash_mask)
+        // Each particle has a spatial lookup value in the form of a hash of the
+        // grid cell index. The particles will be sorted based on their grid_cell_hash
+        // so that particles in the same cell are adjacent in the array.
+        spatial_lookup[i] = grid_cell_hash
+        cell_particle_count[grid_cell_hash] += 1
+    }
+
+    // Sort using counting sort
+    running_total: u32 = 0
+    for k in 0..<hash_size {
+        cell_prefix_sum[k] = running_total
+        cell_particle_count[k] = cell_prefix_sum[k]
+        running_total += cell_particle_count[k]
+    }
+    cell_prefix_sum[hash_size] = running_total
+    for i in 0..<count {
+        sorted_slot := cell_particle_count[spatial_lookup[i]]
+        cell_particle_count[spatial_lookup[i]] += 1
+        sorted_indices[sorted_slot] = i
+    }
+}
+```
+
+This structure allows us to loop through the neighboring cells with ease. We simply find the index of the sorted lookup table that points to
+the first particle in the cell, then traverse through the sorted lookup table to find the rest of the particles. Here is the code for traversal
+over all particles in each neighbor:
+
+```odin
+NeighborhoodIterator :: struct {
+    sim_state:              ^FluidSimState,
+    position:               [2]f32,
+    particle_positions:     [^][2]f32,
+    grid_cell:              [2]i32,
+    smoothing_radius_sq:    f32,
+    offset_idx:             int,
+    offset_count:           int,
+    particle_index:         u32,
+    last_particle_in_cell:  u32,
+}
+
+neighborhood_iterator_next :: proc(it: ^NeighborhoodIterator) ->
+    (dist: [2]f32, particle_index: u32, ok: bool) {
+
+    sim_state := it.sim_state
+    for {
+        if it.particle_index >= it.last_particle_in_cell { // cell has been exhausted
+            it.offset_idx += 1 // Next neighboring cell
+            if it.offset_idx >= it.offset_count do return {}, 0, false
+
+            // Find the integer offset for the neighboring cells
+            offset: [2]i32
+            rem := it.offset_idx
+            for i in 0..<2 {
+                offset[i] = i32(rem % 3) - 1
+                rem /= 3
+            }
+            key := hash_grid_cell(it.grid_cell + offset, sim_state.hash_mask)
+            it.particle_index        = sim_state.cell_prefix_sum[key] // start index
+            it.last_particle_in_cell = sim_state.cell_prefix_sum[key + 1] // end index
+            continue
+        }
+
+        particle_index = sim_state.sorted_particle_index[it.particle_index]
+        it.particle_index += 1
+        dist = it.particle_positions[particle_index] - it.position
+        square_dst := linalg.dot(dist, dist) // To avoid sqrt
+        if square_dst <= it.smoothing_radius_sq {
+            return dist, particle_index, true
+        }
+    }
+}
+```
+
+This results in an algorithmic improvement from $\mathcal{O(n^2)}$
+
+# Updating Positions
 
 <!-- For example, -->
 <!-- $W_{spikey}(r,h)=\frac{15}{\pi h^6}\begin{cases} -->

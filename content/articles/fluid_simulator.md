@@ -205,9 +205,28 @@ neighborhood_iterator_next :: proc(it: ^NeighborhoodIterator) ->
 }
 ```
 
-This results in an algorithmic improvement from $\mathcal{O(n^2)}$
+This results in an algorithmic improvement from $\mathcal{O(n^2)}$ to $\mathcal{O(nk_{avg})}$, where $k_{avg}$ is the average number of particles
+in each particle's neighborhood. There are a few more improvements to this part of the algorithm that could be made to further increase the speed-up.
+Namely, changing the structure each neighborhood of particles is stored in to maximize cache hits on obtaining particle data, [see Compact Hashing
+paper], but that will be for a later post.
 
 # Updating Positions
+
+Now that we have acceleration, we need to solve some differential equations in order to get the updated positions for this time step. Here are the
+equations we will be solving:
+
+The most basic way to solve these equations is by Euler's method
+
+While this method is simple and fast, it also requires a very small time step to be sufficiently stable and accurate. One improvement we can make is
+to use Improved Euler
+
+Improved Euler results in much more stability, however we have a cost of computing the density and acceleration twice per iteration. I would like to
+explore better alternatives [like the PCISPH paper], or using some other faster method of prediction for the implicit step.
+
+# Complete Update Step
+
+Putting everything together, here is the complete update step. Using multiple threads allows you to split up each particle on a different core,
+but still requires you to communicate before sorting twice each step.
 
 <!-- For example, -->
 <!-- $W_{spikey}(r,h)=\frac{15}{\pi h^6}\begin{cases} -->

@@ -99,6 +99,72 @@ between the two pressure values to force symmetry.
 
 $$-\nabla P(r_i) = -\sum_jm_j\frac{P_i + P_j}{2\rho_j}\nabla W(r-r_j, h), \tag{6}$$
 
+## Interaction Force
+
+The title of this article contains the word "interactive," so let's add some interaction to make the simulation
+fun to play with.
+
+```odin
+calculate_interaction_force  :: proc(particle_idx: u32,
+    particle_positions, particle_velocities: [][$N]f32,
+    sim_state: ^FluidSimState(N)) -> [N]f32 {
+
+    interaction_acceleration: [N]f32 = 0
+    if sim_state.mouse_captured &&
+        (sim_state.mouse_left_down || sim_state.mouse_right_down) {
+
+        // RMB pulls the particles in, LMB button pushes them away
+        interaction_strength := sim_state.mouse_right_down ?
+            sim_state.interaction_strength :
+            -sim_state.interaction_strength
+        interaction_radius := sim_state.interaction_radius
+
+        // Hand is interacting, so find vector from hand to particle & its sq distance
+        particle_to_hand := sim_state.mouse_pos - particle_positions[particle_idx]
+        sqr_dst          := linalg.dot(particle_to_hand, particle_to_hand)
+
+        // If particle is in interaction radius, change acceleration on particle
+        if sqr_dst > 0 && sqr_dst < interaction_radius * interaction_radius {
+            dst             := math.sqrt(sqr_dst)
+            center_factor   := 1 - dst / interaction_radius
+            direction       := particle_to_hand / dst // normalize
+            interaction_acceleration += center_factor *
+                (direction * interaction_strength - particle_velocities[particle_idx])
+        }
+    }
+    return interaction_acceleration
+}
+```
+
+Holding the right mouse button down will pull the particles towards the mouse, holding the left mouse button
+will push them away. This is done by just adding an acceleration vector toward or away from the mouse scaled
+by an interaction force constant and the distance from the mouse pointer.
+
+# Smoothing Kernels
+
+Following the [reference paper](https://matthias-research.github.io/pages/publications/sca03.pdf), we use
+two different smoothing kernels.
+
+$$ W_{poly6}(r,h)=\frac{315}{\pi 64h^9}\begin{cases}
+(h^2-r^2)^3, & |r|\le h\\
+0, & \text{otherwise}
+\end{cases} $$
+
+is smooth and reminicient of a Gaussian, and is used for all instances of equation $(1)$ except those having
+to do with pressure force. It also has the benefit of only haaving $r^2$ present, which means we can avoid
+a square root.
+
+$$ W_{spiky}(r,h)=\frac{15}{\pi h^6}\begin{cases}
+(h-r)^2, & |r|\le h\\
+0, & \text{otherwise}
+\end{cases} $$
+
+is a sharp kernel with a high derivative close to its center. For pressure force computation we want the
+influence of very close particles to be much higher to avoid particles clustering together, hence we use
+the spiky kernel.
+
+![The smooth polynomial spline kernel and the spiky kernel](/images/kernels_auto.svg)
+
 # Spatial Partitioning
 
 As it stands, there are several $\mathcal{O}(N^2)$ loops happening each update, where $N$ is the number of particles. When we interpolate a
@@ -121,7 +187,7 @@ cell to be looped over quick and easy. Here is what the code looks like for buil
 update_spatial_lookup :: proc(positions: [][2]f32, sim_state: ^FluidSimState) {
     count               := sim_state.particle_count
     hash_size           := sim_state.hash_size
-    cell_size           := sim_state.physics_cfg.density_smoothing_radius
+    cell_size           := sim_state.density_smoothing_radius
     spatial_lookup      := sim_state.spatial_lookup[:count]
     sorted_indices      := sim_state.sorted_particle_index[:count]
     cell_prefix_sum     := sim_state.cell_prefix_sum[:hash_size + 1]
@@ -205,32 +271,112 @@ neighborhood_iterator_next :: proc(it: ^NeighborhoodIterator) ->
 }
 ```
 
-This results in an algorithmic improvement from $\mathcal{O(n^2)}$ to $\mathcal{O(nk_{avg})}$, where $k_{avg}$ is the average number of particles
-in each particle's neighborhood. There are a few more improvements to this part of the algorithm that could be made to further increase the speed-up.
-Namely, changing the structure each neighborhood of particles is stored in to maximize cache hits on obtaining particle data, [see Compact Hashing
-paper], but that will be for a later post.
+This results in an algorithmic improvement from $\mathcal{O(n^2)}$ to $\mathcal{O(nk_{avg})}$, where $k_{avg}$
+is the average number of particles in each particle's neighborhood. There are certainly a few more improvements
+that could be made to this part of the algorithm to further increase speed-up. As of now, the particle positions
+do not change location when sorted, only their indices, so we do not benefit from a hot cache. Perhaps there is
+a different data structure we could use to help with this, but that will have to be left for a later post.
 
 # Updating Positions
 
-Now that we have acceleration, we need to solve some differential equations in order to get the updated positions for this time step. Here are the
-equations we will be solving:
+We are ultimately interested in how the particles of the system are moving according to the forces of the fluid.
+By this point, we have found the acceleration of each particle by calculating the total force acting on it and all
+that is left is to integrate to find velocity and position. We are solving the following set of differential equations:
 
-The most basic way to solve these equations is by Euler's method
+$$ \begin{aligned}
+    a &= \frac{dv}{dt} \tag{7}\\
+    v &= \frac{dr}{dt}
+\end{aligned} $$
 
-While this method is simple and fast, it also requires a very small time step to be sufficiently stable and accurate. One improvement we can make is
-to use Improved Euler
+The simplest way to solve these equations is by Euler's method. Given some differential equation
 
-Improved Euler results in much more stability, however we have a cost of computing the density and acceleration twice per iteration. I would like to
-explore better alternatives [like the PCISPH paper], or using some other faster method of prediction for the implicit step.
+$$ \frac{dy}{dt} = f(t, y(t)), $$
 
-# Complete Update Step
+we can approximate the solution with a sufficiently small step-size $h$ by
+
+$$ \begin{aligned}
+    y_{n+1} &= y_n + hf(t_n, y(t_n)) \\
+    t_n &= hn
+\end{aligned} $$
+
+
+Which we can apply to $(7)$.
+
+$$ \begin{aligned}
+    v_{n+1} &= v_n + ha(t_n,v_n,r_n) \\
+    r_{n+1} &= r_n + hv_{n+1}
+\end{aligned} $$
+
+While this method is simple and fast, it also requires a very small time step to be sufficiently stable and
+accurate. One improvement we can make is to use Improved Euler (also known as Heun's Method) which uses the
+above Euler prediction in the differential equation itself to find a better prediction.
+
+$$ \begin{aligned}
+    \tilde y_{n+1} &= y_n + hf(t_n, y(t_n)) \\
+    y_{n+1} &= y_n + \frac{h}{2}[f(t_n, y(t_n)) + f(t_{n+1}, \tilde y_{n+1})]
+\end{aligned} $$
+
+Improved Euler means finding a new set of positions and velocities, updating their spatial partitioning,
+finding the density, and the new accelerations. It’s twice the amount of work, but it is much more stable
+than just using Euler, and we can get away with way fewer substeps to the simulation to maintain stability.^[
+In the future, I would like to explore [potentially better alternatives](https://dl.acm.org/doi/10.1145/1576246.1531346?__cf_chl_tk=FmRE4skdUxTty3c2JwixiYNQVAOnlfa6XghKBm_172g-1788030003-1.0.1.1-MzrU81LqlD9GkAfv3jCGpnukY1lasNbuBbndQxVdook)
+to finding the implicit step than just computing all the quantities multiple times. A faster prediction
+might allow us to use an even better integration algorithm like [RK4](https://en.wikipedia.org/wiki/Runge%E2%80%93Kutta_methods).]
+
+
+# The Complete Update Step
 
 Putting everything together, here is the complete update step. Using multiple threads allows you to split up each particle on a different core,
 but still requires you to communicate before sorting twice each step.
 
-<!-- For example, -->
-<!-- $W_{spikey}(r,h)=\frac{15}{\pi h^6}\begin{cases} -->
-<!-- (h-r)^2, & |r|\le h\\ -->
-<!-- 0, & \text{otherwise} -->
-<!-- \end{cases}$ -->
-<!-- ![A cubic spline kernel and its gradient](/images/kernels_auto.svg)] with radius $h$ which satisfies -->
+```odin
+update_step :: proc(sim_state: ^FluidSimState) {
+    sub_dt := sim_state.time_step / f32(sim_state.n_substeps)
+    half_dt := sub_dt * 0.5
+    for _ in 0..<sim_state.n_steps_per_update {
+        for _ in 0..<sim_state.n_substeps {
+            // Update spatial lookup table
+            update_spatial_lookup(sim_state.position, sim_state)
+
+            // Calculate particle densities
+            calculate_all_densities(sim_state.position, sim_state)
+
+            // Get acceleration
+            sim_state.acceleration = calculate_all_accelerations(sim_state.position,
+                sim_state.velocity, sim_state)
+
+            // Use Euler's Method to get velocity and position predictions
+            for i in 0..<sim_state.particle_count {
+                sim_state.velocity_prediction[i] =
+                    sim_state.velocity[i] + sub_dt * sim_state.acceleration[i]
+                sim_state.position_prediction[i] =
+                    sim_state.position[i] + sub_dt * sim_state.velocity_prediction[i]
+            }
+
+            // Update spatial lookup for predicted particles array
+            update_spatial_lookup(sim_state.position_prediction, sim_state)
+
+            // Calculate particle densities for particle predictions
+            calculate_all_densities(sim_state.position_prediction, sim_state)
+
+            // Get acceleration again..
+            sim_state.acceleration_prediction = calculate_all_accelerations(
+                sim_state.position_prediction, sim_state.velocity_prediction,
+                sim_state)
+
+            // Implicit Euler step. Use predictions to find actual next pos and vel
+            for i in 0..<sim_state.particle_count {
+                sim_state.velocity[i] += half_dt *
+                    (sim_state.acceleration[i] + sim_state.acceleration_prediction[i])
+                sim_state.position[i] += half_dt *
+                    (sim_state.velocity[i] + sim_state.velocity_prediction[i])
+            }
+
+            // resolve particle-boundary collisions
+            resolve_boundary_collisions(sim_state)
+        }
+    }
+}
+
+```
+

@@ -1034,6 +1034,108 @@ static std::string inline_svg(const std::filesystem::path& path, const std::stri
     return root_tag + svg.substr(root_end + 1);
 }
 
+// --- Videos ---
+//
+// A video is written exactly like an image, ![alt](/videos/demo.mp4), and the
+// extension alone is what turns the <img> cmark wrote into a <video>. Markdown
+// has no video syntax, and borrowing the image one keeps the markdown free of
+// hand-written tags whose attributes are easy to get subtly wrong.
+//
+// Everything else is read off files beside the video, the same way _auto and the
+// _light/_dark pair are, so there is nothing to configure in the markdown:
+//
+//   demo_loop.mp4  autoplays muted and loops, with no controls — the silent clip
+//                  at the top of an article. Browsers only autoplay muted video,
+//                  and playsinline stops iOS from taking it fullscreen.
+//   demo.mp4       has controls and downloads nothing until played, so a reader
+//                  who never presses play pays only for the poster.
+//   demo.jpg       the poster (.webp and .png also found). Optional for a loop,
+//                  which shows its own first frame. Without one a click-to-play
+//                  video would be an empty box, so it falls back to
+//                  preload="metadata" and the build warns.
+//   demo.av1.mp4   an AV1 encode, offered first. Particle footage is about the
+//                  worst case for H.264 and AV1 is far smaller for it; the plain
+//                  file stays as the fallback for browsers that cannot decode AV1,
+//                  and a browser downloads only the source it picks.
+//
+// A remote URL gets a <video> too, but none of the sidecar lookups, since there is
+// no directory to look in. That is what keeps moving videos to a CDN a matter of
+// rewriting the src.
+//
+// No width or height is written: the element takes its size from the poster
+// before the video loads, which is the same layout-shift behaviour every <img> on
+// the site already has.
+
+static bool is_video(const std::string& url) {
+    const std::string extension = std::filesystem::path(url).extension().string();
+    return extension == ".mp4" || extension == ".webm";
+}
+
+static std::string with_extension(const std::string& url, const std::string& extension) {
+    return std::filesystem::path(url).replace_extension(extension).generic_string();
+}
+
+// Returns the original tag, with a warning, when a local video is missing: an
+// <img> pointing at an .mp4 shows up as a broken image, where a silent autoplay
+// <video> with nothing behind it would just be a hole in the page.
+static std::string render_video(const std::string& tag, const std::string& source,
+                                const std::filesystem::path& static_dir) {
+    const bool local = source.front() == '/';
+    const auto on_disk = [&](const std::string& url) {
+        return local && std::filesystem::exists(static_dir / url.substr(1));
+    };
+
+    if (local && !on_disk(source)) {
+        std::cerr << "warning: no video at " << source << "\n";
+        return tag;
+    }
+
+    std::string poster;
+    for (const char* extension : {".jpg", ".webp", ".png"}) {
+        if (on_disk(with_extension(source, extension))) {
+            poster = with_extension(source, extension);
+            break;
+        }
+    }
+    // Only a click-to-play video needs one. A loop starts on its own and shows its
+    // first frame the moment it has one, which is all a poster would have shown;
+    // a click-to-play video on iOS fetches nothing before the tap, so without a
+    // poster it is an empty box.
+    const bool loop = has_name_suffix(source, "_loop");
+    if (local && poster.empty() && !loop)
+        std::cerr << "warning: no poster for " << source << " (expected "
+                  << with_extension(source, ".jpg") << ")\n";
+
+    std::string video = "<video";
+    if (loop)
+        video += " autoplay muted loop playsinline";
+    else
+        video += poster.empty() ? " controls preload=\"metadata\" playsinline"
+                                : " controls preload=\"none\" playsinline";
+
+    if (!poster.empty())
+        video += " poster=\"" + poster + "\"";
+
+    // A video has no alt; aria-label is the equivalent. Unlike an inlined SVG, an
+    // empty alt does not become aria-hidden — a player with controls is not
+    // decorative, whatever its label says.
+    const std::string alt = attribute_value(tag, "alt");
+    if (!alt.empty())
+        video += " aria-label=\"" + alt + "\"";
+
+    const std::string av1  = add_suffix(source, ".av1");
+    const std::string type = std::filesystem::path(source).extension() == ".webm" ? "video/webm" : "video/mp4";
+
+    if (!on_disk(av1))
+        return video + " src=\"" + source + "\"></video>";
+
+    // The codec string is what lets a browser without an AV1 decoder skip the
+    // first source unfetched. av01.0.08M.08: main profile, level 4.0 (1080p30),
+    // 8-bit, which covers anything this site should be serving.
+    return video + "><source src=\"" + av1 + "\" type='" + type + "; codecs=\"av01.0.08M.08\"'>"
+                 + "<source src=\"" + source + "\" type=\"" + type + "\"></video>";
+}
+
 static std::string resolve_images(const std::string& html) {
     // Every path the generator touches is resolved against the working
     // directory, so a root-absolute URL is static/ plus that path.
@@ -1070,6 +1172,13 @@ static std::string resolve_images(const std::string& html) {
         }
 
         const std::string source = tag.substr(value_start, value_end - value_start);
+
+        // Ahead of the root-absolute test below: a remote video still wants to
+        // be a <video>, where a remote image is left exactly as written.
+        if (!source.empty() && is_video(source)) {
+            output += render_video(tag, source, static_dir);
+            continue;
+        }
 
         // Only a root-absolute path names a file in static/. A remote URL, or a
         // relative one, is the author's business.

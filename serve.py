@@ -22,6 +22,7 @@ import errno
 import functools
 import http.server
 import os
+import re
 import subprocess
 import sys
 import threading
@@ -235,7 +236,56 @@ class PreviewHandler(http.server.SimpleHTTPRequestHandler):
                 self.serve_html(page)
                 return
 
+        if "Range" in self.headers:
+            path = Path(self.translate_path(self.path))
+            if path.is_file():
+                self.serve_range(path, self.headers["Range"])
+                return
+
         super().do_GET()
+
+    def serve_range(self, path: Path, header: str) -> None:
+        """Answer a byte-range request with 206. The base class ignores Range and
+        always sends the whole file, which Chrome and Firefox tolerate for video
+        and Safari does not: it probes with bytes=0-1, and a 200 in reply makes it
+        refuse to play at all. So without this a video previews fine on the
+        desktop and shows a dead player on an iPhone, while the live site —
+        GitHub Pages honours Range — works everywhere.
+
+        Only a single range is handled. A multi-range or malformed header gets the
+        whole file, which the spec permits as an answer to any Range request."""
+        match = re.fullmatch(r"bytes=(\d*)-(\d*)", header.strip())
+        if match is None or match.groups() == ("", ""):
+            super().do_GET()
+            return
+
+        size = path.stat().st_size
+        first, last = match.groups()
+        if first == "":
+            # bytes=-n is the last n bytes, not bytes 0 to n.
+            start, end = max(0, size - int(last)), size - 1
+        else:
+            start = int(first)
+            end = min(int(last), size - 1) if last else size - 1
+
+        if start >= size or start > end:
+            self.send_response(416)
+            self.send_header("Content-Range", f"bytes */{size}")
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
+
+        with path.open("rb") as file:
+            file.seek(start)
+            body = file.read(end - start + 1)
+
+        self.send_response(206)
+        self.send_header("Content-Type", self.guess_type(str(path)))
+        self.send_header("Content-Range", f"bytes {start}-{end}/{size}")
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Accept-Ranges", "bytes")
+        self.end_headers()
+        self.write_body(body)
 
     def locate_html(self) -> Path | None:
         """The .html file this request resolves to, if it is one. Directory URLs

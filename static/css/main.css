@@ -293,11 +293,13 @@ h1 {
 
 h2 {
   font-size: 1.8rem;
+  margin-top: 0;
 }
 
 h3 {
   font-size: 1.3rem;
   font-style: italic;
+  margin-top: 0;
 }
 
 main p {
@@ -321,9 +323,12 @@ main li {
    display: block drops the descender gap an inline image leaves under itself.
    An inlined SVG needs the same cap and does not inherit it: the generator
    splices the drawing in as an <svg> element, which main img cannot match, and
-   the width/height attributes an exporter writes would otherwise fix its size. */
+   the width/height attributes an exporter writes would otherwise fix its size.
+   A <video> is the same case again: the generator turns an image whose src is an
+   .mp4 into one, and it renders at the encode's pixel size unless capped. */
 main img,
-main svg {
+main svg,
+main video {
   display: block;
   max-width: 100%;
   height: auto;

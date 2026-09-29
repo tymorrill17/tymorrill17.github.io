@@ -409,6 +409,47 @@ inlined pair puts both drawings in the HTML. Reach for it only when the drawing 
 photograph, where inverting is exactly wrong; anything flat-coloured is better served by
 `_auto`, which is one file and no second export.
 
+### Videos
+
+A video is written exactly like an image — `![alt](/videos/demo.mp4)` — and lives in
+`static/videos/`. `resolve_images` sees the `.mp4` or `.webm` extension and emits a
+`<video>` in place of the `<img>` cmark wrote, with the alt text as `aria-label`. How it
+behaves is read off files beside it, the same filename-convention idea as `_auto` and the
+`_light`/`_dark` pair, so the markdown never carries attributes:
+
+| file on disk     | effect                                                          |
+| ---------------- | --------------------------------------------------------------- |
+| `demo_loop.mp4`  | `autoplay muted loop playsinline`, no controls — the silent hook |
+| `demo.mp4`       | `controls preload="none"` — nothing downloads until played       |
+| `demo.jpg`       | poster; `.webp` and `.png` are also found                        |
+| `demo.av1.mp4`   | AV1 encode, offered as the first `<source>`, `demo.mp4` fallback |
+
+Browsers only autoplay muted video, and `playsinline` stops iOS going fullscreen, which
+is why the loop variant carries all three. A loop needs no poster — it starts on its
+own and shows its first frame as soon as it has one, which is all a poster would show.
+A click-to-play video does: iOS fetches nothing before the tap, so without a poster it is
+an empty box. It falls back to `preload="metadata"` and the build warns; make the
+poster with `ffmpeg -ss 3 -i demo.mp4 -frames:v 1 -q:v 3 demo.jpg`.
+
+The AV1 source exists because particle footage is close to the worst case for H.264 and
+AV1 is much smaller for it. The `codecs` string on its `<source>` is what lets a browser
+without an AV1 decoder (older Safari, older iPhones) skip it unfetched, so each reader
+downloads exactly one file. H.264 has to stay: it is the one encode every browser plays,
+and it must be `-pix_fmt yuv420p` for Safari. Encode with `-movflags +faststart` so
+playback can start before the download finishes, and `-an`, since every video here is
+silent.
+
+A remote `src` still becomes a `<video>`, just without the sidecar lookups — that is what
+keeps moving videos to a CDN later a matter of rewriting URLs. A missing local file is
+left as the `<img>` and warned about, so it shows as broken rather than as a silent hole.
+No `width`/`height` is written: the poster sizes the element until the video loads, the
+same layout behaviour every `<img>` here already has. `main video` is in the same
+column-width cap as `main img, main svg`, and for the same reason.
+
+Keep each file small — roughly 3MB for an autoplaying loop, which every reader pays for,
+and 5MB for a click-to-play clip. Every committed re-encode stays in the git history for
+good, so iterate on the encode locally and commit the final one.
+
 ### Code blocks
 
 A fenced block carries a language and is syntax-highlighted at build time:
@@ -578,6 +619,12 @@ committing. The browser holds a long poll against `/__livereload` carrying the b
 counter it was served with; a rebuild bumps the counter, the poll returns, the page
 reloads. Responses go out `Cache-Control: no-store`, without which an edited stylesheet
 keeps serving from cache and the rebuild looks broken.
+
+It also answers byte-range requests with `206`, which the standard-library base class
+does not. Chrome and Firefox play video from a plain `200`; Safari probes with
+`Range: bytes=0-1` and refuses to play at all without a `206`, so a video would preview
+fine on the desktop and show a dead player on an iPhone over `--host 0.0.0.0`. Only a
+single range is handled — anything else gets the whole file, which the spec allows.
 
 A failed `make` deliberately does not fall through to `./ssg`: the binary is stale at that
 point, and running it would quietly produce a site full of unsubstituted `{{...}}`. Both

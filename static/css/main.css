@@ -335,6 +335,18 @@ main video {
   margin: 1.6em 0;
 }
 
+/* Opt-in frame, in the code box's colours so it follows the theme toggle. Put
+   class="framed" on an <img> or <video>, or on a <div> wrapped around markdown,
+   since ![](…) cannot carry a class. border-box keeps the frame inside the
+   element's width, so it cannot push past the column on a phone. */
+main .framed:is(img, svg, video),
+main .framed :is(img, svg, video) {
+  box-sizing: border-box;
+  padding: 0.5em;
+  background: var(--code-bg);
+  border: 1px solid var(--code-border);
+}
+
 /* Theme-swapped images, in the two flavours the generator emits: a _light/_dark
    pair, one of which is hidden, and an _auto drawing, which is a single file put
    through a filter. The filter is the cheap route — it costs nothing per colour

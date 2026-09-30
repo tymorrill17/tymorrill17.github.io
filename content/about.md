@@ -5,10 +5,11 @@ template = "article"
 
 Greetings, I'm Tyler Morrill.
 
-I am a software engineer developing advanced physics simulation software at an engineering company. I am passionate about transitioning into a graphics, rendering, physics, or engine programming role in the games industry.
+I write physics simulations and graphics software.
 
-Here is where I showcase some personal projects and things that interest me. I am primarily interested in computer graphics, GPU programming, and real-time physics simulations.
+This is my personal blog about technical things that interest me.
 
-I studied mathematics at the University of Central Florida for undergrad, and am now pursuing a master's degree in computer graphics at Georgia Tech alongside my full-time job.
+Here is my son, Major Tom.
 
-I also love to read novels and play games.
+<img width="360" alt="A beautiful picture of my dog, Major Tom in the sunlight. He is sandy colored, has one blue and one brown eye, and is the best boy." src=/images/major.png>
+

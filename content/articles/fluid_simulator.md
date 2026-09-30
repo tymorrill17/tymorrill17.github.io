@@ -3,30 +3,29 @@ title = "Interactive Real-Time Fluid Simulator"
 template = "article"
 date = "September 28, 2026"
 description = "Real-time, particle-based fluid simulation."
-draft = true
+draft = false
 +++
 
 *{{date}}*
 # {{title}}
 
-This is an overview of my implementation of a [particle-based fluid simulation](https://github.com/tymorrill17/odin-GraphicsEngine) using the
+This article is a showcase of my [particle-based fluid simulation implementation](https://github.com/tymorrill17/odin-GraphicsEngine) using the
 [smoothed-particle hydrodynamics (SPH) method](https://en.wikipedia.org/wiki/Smoothed-particle_hydrodynamics). The visualization
-is done using my own [rendering engine](/articles/renderer.html) written in
-[Odin](https://odin-lang.org/).^[Odin is a C-like systems programming language. It aims to keep the control and simplicity of C while
-providing modern conveniences. It's a blast to use for graphics and game programming.]
+is done using my own rendering engine (article coming soon) written in [Odin](https://odin-lang.org/).^[Odin is a C-like systems programming
+language. It aims to keep the control and simplicity of C while providing modern conveniences. It's a blast to use for graphics and game programming.]
 
 ![Particles sloshing around a box](/videos/intro_demo_loop.mp4)
 
-I was inspired to tackle this project by [Sebastian Lague's excellent video](https://youtu.be/rSKMYc1CQHE), from which I was directed to the following
-papers for many of the implementation details.
+I was inspired to tackle this project by Sebastian Lague's excellent fluid simulation [video](https://youtu.be/rSKMYc1CQHE), from which I was directed
+to the following papers for many of the implementation details.
 
-- Müller, Charypar and Gross, [*Particle-Based Fluid Simulation for Interactive Applications*](https://dl.acm.org/doi/10.5555/846276.846298), SCA 2003.
-- Clavet, Beaudoin and Poulin, [*Particle-Based Viscoelastic Fluid Simulation*](https://doi.org/10.1145/1073368.1073400), SCA 2005.
+- Müller, Charypar, and Gross, [*Particle-Based Fluid Simulation for Interactive Applications*](https://dl.acm.org/doi/10.5555/846276.846298), SCA 2003.
+- Clavet, Beaudoin, and Poulin, [*Particle-Based Viscoelastic Fluid Simulation*](https://doi.org/10.1145/1073368.1073400), SCA 2005.
 - Solenthaler and Pajarola, [*Predictive-Corrective Incompressible SPH*](https://doi.org/10.1145/1576246.1531346), SIGGRAPH 2009.
 
 # Smoothed-Particle Hydrodynamics
 
-Smoothed-Particle Hydrodynamics (SPH) was initially developed for astrophysics. It provides a way to interpolate field quantities of a fluid
+Smoothed-particle hydrodynamics (SPH) was initially developed for astrophysics. It provides a way to interpolate field quantities of a fluid
 using values carried by discrete particles. Each particle has a position, velocity, and acceleration, which are determined by the fluid itself,
 along with quantities relevant to the fluid equation like density or viscosity. The total field value may be found at any
 point in space by interpolating each particle's contribution weighted by a smoothing kernel. In mathematical notation, for a query point $r$, a scalar field
@@ -39,10 +38,10 @@ $W(r,h)$ is the smoothing kernel.^[There are many options for the smoothing kern
 kernels may behave more favorably towards certain quantities.]
 
 The smoothing kernel should be radially symmetric, with finite support defined by radius $h$.^[$W(r,h)$ will only be nonzero when $0 \le r \le h$.]
-It should also be normalized^[$\int_{\Omega} W(r,h)dr = 1$, where $\Omega$ is the entire domain of the simulation.] and ideally should have vanishing
+It should also be normalized^[$\int_{\Omega} W(r,h)dr = 1$, where $\Omega$ is the entire domain of the simulation.], and ideally have vanishing
 values and derivatives at the boundary $h$ so as not to have discontinuities as particles leave and enter its radius.
 
-For our case, let's assume mass is constant between particles, $m_j = 1$, so we can forget about it. That leaves us
+For our case, let's assume mass is constant between particles ($m_j = 1$ for all $j$) so we can forget about it. That leaves us
 with finding $\rho_j$, which we can do using equation $(1)$ itself.
 
 $$\rho_S(r) = \sum_j m_j \frac{\rho_j}{\rho_j}W(r-r_j,h) = \sum_j m_j W(r-r_j,h)$$
@@ -54,20 +53,20 @@ $$ \nabla A_S(r) = \sum_jm_j\frac{A_j}{\rho_j}\nabla W(r-r_j, h) \tag{2} $$
 
 $$ \nabla^2 A_S(r) = \sum_jm_j\frac{A_j}{\rho_j}\nabla^2 W(r-r_j, h) \tag{3} $$
 
-Now let's take a look at the equation to be solved.
+Now, let's take a look at the equation to be solved.
 
 # The Navier-Stokes Equation
 
 Fluids are governed by a set of partial differential equations called the Navier-Stokes equations. For our not-so-lofty aspirations of making
-pretty pictures, we will concern ourselves with the following simplified version of the primary equation:^[You may see the left-hand side of the
+pretty pictures, we will concern ourselves with the following simplified version of the primary equation.^[In other sources, you may see the left-hand side of this
 equation in the form $\rho \frac{Dv}{Dt} = \rho \frac{\partial v}{\partial t} + \rho (v\cdot\nabla) v$. We can use the fact that the particles move with the
 fluid's velocity field to simplify it.]
 
 $$ \rho\frac{dv}{dt} = -\nabla P + \rho g + \mu \nabla^2 v + \mathbf{f}_e \tag{4} $$
 
-Here, $-\nabla P$ is the pressure force, $\rho g$ is the gravitational force, $\mu \nabla^2 v$ is the viscosity term,^[I am ignoring
+Here, $-\nabla P$ is the pressure force, $\rho g$ is the gravitational force, $\mu \nabla^2 v$ is the viscosity force,^[I am ignoring
 the viscosity term $\mu \nabla^2 v$ for now. It will be tackled in a later post.] and $\mathbf{f}_e$ are the
-external forces. If you look closely, and note that $\rho$ is a mass analogue, you can see Newton's Second Law in disguise.
+external forces. If you look closely and note that $\rho$ is a mass analogue, you can see Newton's second law in disguise.
 
 $$ \begin{aligned}
          F_{total} &= -\nabla P + \rho g + \mu \nabla^2 v + \mathbf{f}_e \\
@@ -88,19 +87,19 @@ There are a couple of things to consider here. First, $P_j$ may be obtained from
 $$P_j = \rho_j k,$$
 where $k$ is a constant. It is common to use a modification of the ideal gas equation
 $$P_j = k(\rho_j - \rho_0),$$
-which will increase the numerical stability of the simulation since using this with $(6)$ can result in negative pressure and pretend
-to be some crude form of cohesion.
+which will increase the numerical stability of the simulation, since using this with $(6)$ can result in negative pressure, effectively
+introducing a crude form of cohesion.
 
-Second, equation $(5)$ does not accurately compute the pressure force since it is not symmetric. Consider the interaction
+Secondly, equation $(5)$ does not accurately compute the pressure force since it is not symmetric. Consider the interaction
 between two particles, $r_i$ and $r_j$. Using $(5)$ and the property of the smoothing kernel $\nabla W(-r,h) = -\nabla W(r,h)$,
-Newton's Third Law implies
+Newton's third law implies
 
 $$ \begin{aligned}
 & -\nabla P(r_i) = \nabla P(r_j) \\
 \implies & -m_j \frac{P_j}{\rho_j} \nabla W(r_i - r_j) = -m_i \frac{P_i}{\rho_i} \nabla W(r_i - r_j) \\
 \implies & \frac{P_j}{\rho_j} = \frac{P_i}{\rho_i} \\
 \implies & \frac{k(\rho_j - \rho_0)}{\rho_j} = \frac{k(\rho_i - \rho_0)}{\rho_i} \\
-\implies & \rho_j = \rho_i
+\implies & \rho_j = \rho_i,
 \end{aligned} $$
 
 which are not guaranteed to be equal. In order to remedy this, use the following substitution for equation $(5)$ that uses the mean
@@ -111,9 +110,7 @@ $$-\nabla P(r_i) = -\sum_jm_j\frac{P_i + P_j}{2\rho_j}\nabla W(r_i-r_j, h), \tag
 ## Interaction Force
 
 The title of this article contains the word "interactive," so let's add some interaction to make the simulation
-fun to play with.
-
-The force will fall off with distance and will strongly damp particle motion inside the radius.
+fun to play with. The force will fall off with distance and strongly damp particle motion inside the radius.
 
 ```odin
 calculate_interaction_force  :: proc(particle_idx: u32,
@@ -152,14 +149,14 @@ will push them away.
 
 # Smoothing Kernels
 
-Following (Müller, Charypar and Gross 2003), we use two different smoothing kernels.
+Following (Müller, Charypar, and Gross 2003), we use two different smoothing kernels.
 
 $$ W_{poly6}(r,h)=\frac{315}{\pi 64h^9}\begin{cases}
 (h^2-r^2)^3, & |r|\le h\\
 0, & \text{otherwise}
 \end{cases} $$
 
-is smooth and reminiscent of a Gaussian. It should be used for quantities that should be similar in value when close together,
+is smooth and reminiscent of a Gaussian. This kernel should be used for quantities that should be similar in value when close together,
 such as viscosity. It also has the benefit of only using $r^2$, which means we can avoid a square root.
 
 $$ W_{spiky}(r,h)=\frac{15}{\pi h^6}\begin{cases}
@@ -168,15 +165,15 @@ $$ W_{spiky}(r,h)=\frac{15}{\pi h^6}\begin{cases}
 \end{cases} $$
 
 is a sharp kernel with a high derivative close to its center. This will cause the values near the center to be large with
-a very high rate of change. This means the spiky kernel is a much better candidate for something like pressure force,
-which depends on the derivative of the kernel, as opposed to $W_{poly6}$, which has a zero derivative at its center, since
-we want particles close together to strongly repel each other.
+a very high rate of change, making the spiky kernel a much better candidate for something like pressure force,
+which depends on the derivative of the kernel. $W_{poly6}$, which has a zero derivative at its center, would fail to effectively repel
+particles that are close together.
 
 ![The smooth polynomial spline kernel and the spiky kernel](/images/kernels2_auto.svg)
 
 # Spatial Partitioning
 
-As it stands, there are several $\mathcal{O}(n^2)$ loops happening each update, where $n$ is the number of particles. When we interpolate a
+As it stands, there are several $\mathcal{O}(n^2)$ loops occurring each update, where $n$ is the number of particles. When we interpolate a
 quantity using equation $(1)$, the only particles that contribute to the final value $A_S(r)$ are the ones that are within a distance $h$
 of the query point $r_{query}$. We only need to loop through the particles that satisfy $|r_{particle} - r_{query}| \le h$.
 
@@ -188,9 +185,9 @@ know that the only particles we need to loop through are the ones which lie in c
 The only particles for which the smoothing function may be nonzero are the ones colored in red, which reside in cells in or adjacent to the
 query point's cell.
 
-To get this partitioned space, we first define a hash function that maps each cell to an integer. Every update step, we will keep track of the
-cell hash for each particle. The particles are then sorted based on their cell's hash value. This ensures that we can access particles in the same
-cell to be looped over quick and easy. Here is what the code looks like for building this spatial hashing:
+To get this partitioned space, a hash function that maps each cell to an integer must be defined. Every update, we will keep track of each
+particle’s cell hash and sort the particles based on their cell hash values. This ensures that we can access particles in the same
+cell to be looped over quickly and easily.
 
 ```odin
 update_spatial_lookup :: proc(positions: [][2]f32, sim_state: ^FluidSimState) {
@@ -230,10 +227,8 @@ update_spatial_lookup :: proc(positions: [][2]f32, sim_state: ^FluidSimState) {
 }
 ```
 
-This structure allows us to loop through the neighboring cells with ease. We simply find the index of the sorted lookup table that points to
-the first particle in the cell, then traverse through the sorted lookup table to find the rest of the particles. Here is the code for traversal
-over all particles in each neighbor:
-
+The above structure allows us to loop through the neighboring cells with ease. We simply find the index of the sorted lookup table that points to
+the first particle in the cell, then traverse the table to find the remaining particles.
 ```odin
 NeighborhoodIterator :: struct {
     sim_state:              ^FluidSimState,
@@ -280,12 +275,12 @@ neighborhood_iterator_next :: proc(it: ^NeighborhoodIterator) ->
 }
 ```
 
-This results in an algorithmic improvement while looping through particles going from $\mathcal{O}(n^2)$
+Looping through particles is now much quicker, achieving an algorithmic complexity increase from $\mathcal{O}(n^2)$
 to $\mathcal{O}(nk_{avg})$, where $k_{avg}$ is the average number of particles in each particle's neighborhood.
 
 It should be noted that there is a drawback to this approach. Two different cells can hash to the same key, meaning that
-we might double count if this happens to two neighboring cells. For a sufficiently large hash table, this should be very rare,
-but you could add some sort of check for this if you like.
+we might double count if this happens to two neighboring cells. For a sufficiently large hash table, this should be rare,
+but you could check for this if desired.
 
 ## Computing Fluid Quantities
 
@@ -341,8 +336,8 @@ calculate_pressure_force :: proc(particle_idx: u32, particle_positions: [][2]f32
 # Updating Positions
 
 We are ultimately interested in how the particles of the system are moving according to the forces of the fluid.
-By this point, we have found the acceleration of each particle by calculating the total force acting on it and all
-that is left is to integrate to find velocity and position. We are solving the following set of differential equations:
+By this point, we have found the acceleration of each particle by calculating the total force acting on it. All
+that remains is integrating to find velocity and position. We are solving the following system of differential equations.
 
 $$ \begin{aligned}
     a &= \frac{dv}{dt} \tag{7}\\
@@ -368,8 +363,8 @@ $$ \begin{aligned}
     r_{n+1} &= r_n + \Delta tv_{n+1}
 \end{aligned} $$
 
-While this method is simple and fast, it also requires a very small time step to be sufficiently stable and
-accurate. One improvement we can make is to use Improved Euler (also known as Heun's Method) which uses the
+While this method is simple and fast, it also requires a very small timestep to be sufficiently stable and
+accurate. One improvement we could make is to use the Improved Euler method (also known as Heun's method) which uses the
 above Euler prediction in the differential equation itself to find a better prediction.
 
 $$ \begin{aligned}
@@ -377,13 +372,13 @@ $$ \begin{aligned}
     y_{n+1} &= y_n + \frac{\Delta t}{2}[f(t_n, y(t_n)) + f(t_{n+1}, \tilde y_{n+1})]
 \end{aligned} $$
 
-Improved Euler means finding a new set of positions and velocities, updating their spatial partitioning,
-finding the density, and the new accelerations. This results in a much more stable solution, allowing for
+Improved Euler involves finding a new set of positions and velocities, updating their spatial partitioning, and
+finding the density and new accelerations. This achieves a much more stable solution, allowing for
 fewer substeps at the cost of twice as much computation. For our application, however, finding $f(t,y(t))$ is the most
-expensive part, so we would like to avoid doing it twice.
+computationally expensive part, so we would like to avoid doing it twice.
 
-Instead, we just do a prediction step. We make a prediction of the velocities and positions just based on gravity (and maybe viscosity in the future)
-before finding the densities. This may not be completely accurate, but it increases stability and is sufficient for our
+Instead, we perform a simpler prediction step. We make a prediction of the velocities and positions solely based on gravity (and maybe viscosity in the future)
+before finding the densities. The resulting solution may not be completely accurate, but it is much more stable and is sufficient for our
 goal of making pretty pictures.^[In the future, I would like to explore (Solenthaler and Pajarola 2009) for a better alternative.]
 
 $$ \begin{aligned}
@@ -392,7 +387,7 @@ $$ \begin{aligned}
 \end{aligned} $$
 
 These predictions are then used in finding density, pressure, and acceleration. Once the real acceleration is found, it is used
-to integrate the real updated velocities and positions just like in regular old Euler's method.
+to integrate the real updated velocities and positions, just like in regular old Euler's method.
 
 $$ \begin{aligned}
     v_{n+1} &= v_n + \Delta ta(t_n,v_{n+1}',r_{n+1}') \\
@@ -401,9 +396,10 @@ $$ \begin{aligned}
 
 # The Complete Update Step
 
-Putting everything together, here is the complete update step. There is potential to use multiple CPU cores and/or SIMD here
-distributed over particles, being careful to synchronize before and after spatial hash updating, after finding the density,
-and before the next update step.
+
+Bringing everything together, the complete update step is shown below. This step could be parallelized across multiple CPU cores and/or by using SIMD
+over the particle count. Synchronization should occur before and after spatial hash updating, after computing the density, and before the beginning the
+next update.
 
 ```odin
 calculate_acceleration :: proc(particle_idx: u32, particle_positions,
@@ -466,18 +462,17 @@ update_step :: proc(sim_state: ^FluidSimState) {
 
 # Conclusion
 
-After dividing the computation up among each of my desktop's 16 cores, I was able to get about 50,000 particles
-running at above 100 frames per second. It is surprising to me how fast and stable this method can be, considering this is only
-on a CPU.
+After dividing the computation across my desktop's 16 cores, I was able to get about 50,000 particles
+running at above 100 frames per second. Considering this is only utilizing a CPU, I am surprised by how fast and stable it is.
 
 ![Lots and lots of particles (50,000 of them), oh my!](/videos/final_demo.mp4)
 
-I plan to continue this project, as I had a lot of fun working on it. I would like to move the simulation to GPU compute shaders. I would
-also like to add a third dimension and render the fluid so I can stop looking at these dots.
+I plan to continue this project, as I had a lot of fun building it. My next goals are to move the simulation to the GPU using compute
+shaders, add a third dimension, and render the fluid properly so I can finally stop looking at just these dots.
 
-I would also like to have some rigid body interactions so I can make a boat or something and turn this into a little game.
+Beyond that, I would also like to support rigid body interactions so I can experiment with making a boat and convert the project into a little game.
 
-This is my first technical blog post ever. I have been wanting to start this for a long time. Thanks for checking it out and stay tuned for more! :)
+This is my first technical blog post ever; I have been wanting to start this for a long time. Thanks for checking it out and stay tuned for more! :)
 
 
 
